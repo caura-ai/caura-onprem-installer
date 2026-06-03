@@ -1,0 +1,12 @@
+# Air-gap variant of docker-compose.embedder.yml — points at the
+# locally-loaded image (memclaw-onprem/core-api-embedder:<version>)
+# rather than ghcr.io. Load the image first via airgap-load.sh.
+
+services:
+  core-api:
+    image: "memclaw-onprem/core-api-embedder:${MEMCLAW_VERSION:-latest}"
+    environment:
+      EMBEDDING_PROVIDER: "local"
+      EMBEDDING_MODEL: "BAAI/bge-base-en-v1.5"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_OFFLINE: "1"

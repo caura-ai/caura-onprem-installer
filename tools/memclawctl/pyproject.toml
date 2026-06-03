@@ -1,0 +1,23 @@
+[project]
+name = "caura-memclawctl"
+version = "0.1.0"
+description = "Day-2 operations CLI for on-prem MemClaw deployments"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "Caura Team", email = "dev@caura.io" }]
+dependencies = [
+    "click>=8.1,<9.0",
+    "httpx>=0.27,<1.0",
+    "rich>=13.0,<14.0",
+]
+
+[project.scripts]
+memclawctl = "memclawctl.cli:cli"
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

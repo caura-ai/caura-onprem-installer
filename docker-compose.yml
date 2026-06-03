@@ -1,0 +1,302 @@
+# MemClaw Enterprise on-prem stack.
+#
+# Images are pulled from ghcr.io/caura-ai. For air-gapped installs use
+# `docker compose -f docker-compose.yml -f docker-compose.airgap.yml up -d`
+# which swaps the image references to locally-loaded tags.
+#
+# Pin image digests in the release tarball; the :<version> tag here is
+# rewritten by install.sh at run time based on the customer's MEMCLAW_VERSION.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-memclaw}"
+      POSTGRES_USER: "${POSTGRES_USER:-memclaw}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-memclaw}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    command: ["redis-server", "--save", "60", "1"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging: *default-logging
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  platform-storage-api:
+    image: "ghcr.io/caura-ai/memclaw-platform-storage:${MEMCLAW_VERSION:-latest}"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-memclaw}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-memclaw}"
+      DB_SCHEMA: enterprise
+      LOG_FORMAT_JSON: "true"
+      LOG_FILE: /var/log/memclaw/platform-storage-api/platform-storage-api.log
+    volumes:
+      - ./logs/platform-storage-api:/var/log/memclaw/platform-storage-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    logging: *default-logging
+
+  platform-auth-api:
+    image: "ghcr.io/caura-ai/memclaw-platform-auth:${MEMCLAW_VERSION:-latest}"
+    restart: unless-stopped
+    environment:
+      PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
+      JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env (32+ chars)}"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      LICENSE_FILE: /etc/memclaw/license.key
+      EMAIL_PROVIDER: "${EMAIL_PROVIDER:-log}"
+      EMAIL_API_KEY: "${EMAIL_API_KEY:-}"
+      EMAIL_FROM: "${EMAIL_FROM:-noreply@${PUBLIC_HOSTNAME:-memclaw.local}}"
+      SITE_URL: "${SITE_URL:-https://${PUBLIC_HOSTNAME:-memclaw.local}}"
+      SMTP_HOST: "${SMTP_HOST:-localhost}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID:-}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET:-}"
+      # On-prem default: ON. The first admin is already authenticated by
+      # possessing the license file (the trust anchor); most on-prem
+      # deployments don't configure a real mailer (EMAIL_PROVIDER=log by
+      # default), so enforcing email verification just traps the admin
+      # at /verify-email with a code nobody can reach. SaaS flips this
+      # back to false via its own compose.
+      SKIP_EMAIL_VERIFICATION: "${SKIP_EMAIL_VERIFICATION:-true}"
+      LOG_FORMAT_JSON: "true"
+      LOG_FILE: /var/log/memclaw/platform-auth-api/platform-auth-api.log
+    volumes:
+      # rw so the first-run /api/setup/license endpoint can write the uploaded
+      # license into this volume. After setup the whole /setup/* surface returns
+      # 404 so no untrusted code can overwrite the file.
+      - ./license:/etc/memclaw
+      - ./logs/platform-auth-api:/var/log/memclaw/platform-auth-api
+    depends_on:
+      platform-storage-api:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    logging: *default-logging
+
+  platform-admin-api:
+    image: "ghcr.io/caura-ai/memclaw-platform-admin:${MEMCLAW_VERSION:-latest}"
+    restart: unless-stopped
+    environment:
+      PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
+      CORE_API_URL: http://core-api:8000
+      CORE_ADMIN_API_KEY: "${CORE_ADMIN_API_KEY:?set CORE_ADMIN_API_KEY in .env}"
+      JWT_SECRET: "${JWT_SECRET}"
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      LICENSE_FILE: /etc/memclaw/license.key
+      SERVICE_VERSION: "${MEMCLAW_VERSION:-latest}"
+      BILLING_ENABLED: "false"
+      SETTINGS_ENCRYPTION_KEY: "${SETTINGS_ENCRYPTION_KEY:?install.sh generates this}"
+      SCHEDULER_ENABLED: "${SCHEDULER_ENABLED:-false}"
+      EMAIL_PROVIDER: "${EMAIL_PROVIDER:-log}"
+      EMAIL_API_KEY: "${EMAIL_API_KEY:-}"
+      EMAIL_FROM: "${EMAIL_FROM:-noreply@${PUBLIC_HOSTNAME:-memclaw.local}}"
+      SITE_URL: "${SITE_URL:-https://${PUBLIC_HOSTNAME:-memclaw.local}}"
+      SMTP_HOST: "${SMTP_HOST:-localhost}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      LOG_FORMAT_JSON: "true"
+      LOG_FILE: /var/log/memclaw/platform-admin-api/platform-admin-api.log
+    volumes:
+      # rw so the first-run /api/setup/license endpoint can write the uploaded
+      # license into this volume. After setup the whole /setup/* surface returns
+      # 404 so no untrusted code can overwrite the file.
+      - ./license:/etc/memclaw
+      - ./logs/platform-admin-api:/var/log/memclaw/platform-admin-api
+    depends_on:
+      platform-storage-api:
+        condition: service_healthy
+      platform-auth-api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+
+  platform-audit-api:
+    image: "ghcr.io/caura-ai/memclaw-platform-audit:${MEMCLAW_VERSION:-latest}"
+    restart: unless-stopped
+    environment:
+      PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      LOG_FORMAT_JSON: "true"
+      LOG_FILE: /var/log/memclaw/platform-audit-api/platform-audit-api.log
+    volumes:
+      - ./logs/platform-audit-api:/var/log/memclaw/platform-audit-api
+    depends_on:
+      platform-storage-api:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    logging: *default-logging
+
+  core-storage-api:
+    image: "ghcr.io/caura-ai/memclaw-core-storage:${MEMCLAW_VERSION:-latest}"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-memclaw}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-memclaw}"
+      ALLOYDB_HOST: "${POSTGRES_HOST:-postgres}"
+      ALLOYDB_PORT: "${POSTGRES_PORT:-5432}"
+      ALLOYDB_USER: "${POSTGRES_USER:-memclaw}"
+      ALLOYDB_PASSWORD: "${POSTGRES_PASSWORD}"
+      ALLOYDB_DATABASE: "${POSTGRES_DB:-memclaw}"
+      ALLOYDB_REQUIRE_SSL: "${POSTGRES_REQUIRE_SSL:-false}"
+      ENVIRONMENT: production
+      LOG_FORMAT_JSON: "true"
+      LOG_FILE: /var/log/memclaw/core-storage-api/core-storage-api.log
+    volumes:
+      - ./logs/core-storage-api:/var/log/memclaw/core-storage-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      platform-storage-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/healthz')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging: *default-logging
+
+  core-api:
+    image: "ghcr.io/caura-ai/memclaw-core-api:${MEMCLAW_VERSION:-latest}"
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      CORE_STORAGE_API_URL: http://core-storage-api:8002
+      ALLOYDB_HOST: "${POSTGRES_HOST:-postgres}"
+      ALLOYDB_PORT: "${POSTGRES_PORT:-5432}"
+      ALLOYDB_USER: "${POSTGRES_USER:-memclaw}"
+      ALLOYDB_PASSWORD: "${POSTGRES_PASSWORD}"
+      ALLOYDB_DATABASE: "${POSTGRES_DB:-memclaw}"
+      ALLOYDB_REQUIRE_SSL: "${POSTGRES_REQUIRE_SSL:-false}"
+      REDIS_URL: redis://redis:6379/0
+      IS_STANDALONE: "false"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      ADMIN_API_KEY: "${CORE_ADMIN_API_KEY}"
+      # core-api in ENVIRONMENT=production refuses to start without these.
+      JWT_SECRET: "${JWT_SECRET}"
+      SETTINGS_ENCRYPTION_KEY: "${SETTINGS_ENCRYPTION_KEY:?install.sh generates this}"
+      EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-local}"
+      ENTITY_EXTRACTION_PROVIDER: "${ENTITY_EXTRACTION_PROVIDER:-none}"
+      USE_LLM_FOR_MEMORY_CREATION: "${USE_LLM_FOR_MEMORY_CREATION:-false}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      PLATFORM_LLM_PROVIDER: "${PLATFORM_LLM_PROVIDER:-}"
+      PLATFORM_LLM_MODEL: "${PLATFORM_LLM_MODEL:-}"
+      PLATFORM_LLM_API_KEY: "${PLATFORM_LLM_API_KEY:-}"
+      PLATFORM_EMBEDDING_PROVIDER: "${PLATFORM_EMBEDDING_PROVIDER:-}"
+      PLATFORM_EMBEDDING_API_KEY: "${PLATFORM_EMBEDDING_API_KEY:-}"
+      PLATFORM_EMBEDDING_MODEL: "${PLATFORM_EMBEDDING_MODEL:-}"
+      LOG_FORMAT_JSON: "true"
+      LOG_FILE: /var/log/memclaw/core-api/core-api.log
+    volumes:
+      - ./logs/core-api:/var/log/memclaw/core-api
+    depends_on:
+      core-storage-api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    logging: *default-logging
+
+  app-frontend:
+    image: "ghcr.io/caura-ai/memclaw-app:${MEMCLAW_VERSION:-latest}"
+    restart: unless-stopped
+    environment:
+      # Runtime-config shim (Phase 3b): the frontend fetches /env-config.js
+      # at load time, so the same image works across customer domains.
+      MEMCLAW_API_URL: "https://${PUBLIC_HOSTNAME:-memclaw.local}"
+      MEMCLAW_SITE_URL: "https://${PUBLIC_HOSTNAME:-memclaw.local}"
+      MEMCLAW_BILLING_ENABLED: "false"
+    depends_on:
+      platform-admin-api:
+        condition: service_started
+    logging: *default-logging
+
+  gateway:
+    # Built from ./nginx/ in this bundle: a plain-HTTP reverse proxy over
+    # Docker DNS upstreams. Terminate TLS in front (Caddy, Traefik, a cloud
+    # load balancer, or your own cert) — see docs/TLS.md.
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    image: "memclaw-onprem/gateway:${MEMCLAW_VERSION:-latest}"
+    restart: unless-stopped
+    # Default binds to 0.0.0.0 for backward compatibility with existing
+    # installs. install.sh writes BIND_ADDRESS=127.0.0.1 into .env when
+    # the customer runs --bind-address=loopback to put MemClaw behind
+    # their own reverse proxy. 443 is always exposed but only listens
+    # when /opt/memclaw/tls/ has cert+key (entrypoint detects).
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+    environment:
+      SERVER_NAME: "${PUBLIC_HOSTNAME:-memclaw.local}"
+      AUTH_UPSTREAM: platform-auth-api:8020
+      ADMIN_UPSTREAM: platform-admin-api:8001
+      CORE_UPSTREAM: core-api:8000
+      APP_UPSTREAM: app-frontend:3000
+    volumes:
+      - ./logs/gateway:/var/log/nginx
+      # Bind-mount tls/ if it exists; nginx entrypoint checks for
+      # cert.pem + key.pem inside /etc/nginx/tls and switches templates.
+      # The mount is harmless when the dir is empty (HTTP-only mode).
+      - ./tls:/etc/nginx/tls:ro
+    depends_on:
+      platform-admin-api:
+        condition: service_started
+      platform-auth-api:
+        condition: service_started
+      core-api:
+        condition: service_started
+      app-frontend:
+        condition: service_started
+    logging: *default-logging
+
+volumes:
+  pgdata:
+  redisdata:
+  rabbitmqdata:

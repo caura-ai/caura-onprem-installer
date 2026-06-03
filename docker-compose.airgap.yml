@@ -1,0 +1,27 @@
+# Overlay for air-gapped installs. Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.airgap.yml up -d
+#
+# The images are loaded locally by airgap-load.sh under the `memclaw-onprem/`
+# namespace, so we swap ghcr.io/caura-ai/<name>:<version> for the local tag.
+
+services:
+  platform-storage-api:
+    image: "memclaw-onprem/platform-storage:${MEMCLAW_VERSION:-latest}"
+  platform-auth-api:
+    image: "memclaw-onprem/platform-auth:${MEMCLAW_VERSION:-latest}"
+  platform-admin-api:
+    image: "memclaw-onprem/platform-admin:${MEMCLAW_VERSION:-latest}"
+  platform-audit-api:
+    image: "memclaw-onprem/platform-audit:${MEMCLAW_VERSION:-latest}"
+  core-storage-api:
+    image: "memclaw-onprem/core-storage:${MEMCLAW_VERSION:-latest}"
+  core-api:
+    # Default = slim core-api. Overridden again by docker-compose.embedder.yml
+    # to memclaw-onprem/core-api-embedder:<version> when local embeddings
+    # are needed (air-gap + no OpenAI/Vertex key).
+    image: "memclaw-onprem/core-api:${MEMCLAW_VERSION:-latest}"
+  app-frontend:
+    image: "memclaw-onprem/app:${MEMCLAW_VERSION:-latest}"
+  # gateway image is built locally (see docker-compose.yml); override is a no-op
+  gateway:
+    image: "memclaw-onprem/gateway:${MEMCLAW_VERSION:-latest}"

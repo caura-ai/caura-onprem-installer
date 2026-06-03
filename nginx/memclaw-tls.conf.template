@@ -1,0 +1,55 @@
+# On-prem gateway config — TLS variant.
+#
+# Used when /etc/nginx/tls/cert.pem and /etc/nginx/tls/key.pem are
+# present in the gateway container — install.sh's --tls-cert /
+# --tls-self-signed paths bind-mount $MEMCLAW_HOME/tls/ to that
+# location at install time, and docker-entrypoint.sh detects the certs
+# and selects this template instead of the HTTP-only one.
+#
+# Port 80 stays open for /healthz (load balancers expect plain HTTP)
+# and redirects everything else to https. All other location rules
+# live in memclaw-locations.conf, included once into the 443 server.
+
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+# Optional behind-LB note: if a customer fronts MemClaw with another
+# TLS terminator AND uses these certs, X-Forwarded-Proto from the
+# outer proxy is still honoured by upstream services because the
+# location includes set proxy_set_header X-Forwarded-Proto $scheme.
+
+server {
+    listen 80 default_server;
+    server_name ${SERVER_NAME};
+
+    # /healthz stays available on plain HTTP so cloud LBs / k8s probes
+    # don't have to deal with TLS to check liveness.
+    location = /healthz { return 200 "ok"; add_header Content-Type text/plain; }
+
+    # Everything else: 301 to the same path on HTTPS. Permanent so
+    # browsers cache it; HSTS lives on the 443 side.
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl default_server;
+    http2 on;
+    server_name ${SERVER_NAME};
+
+    ssl_certificate     /etc/nginx/tls/cert.pem;
+    ssl_certificate_key /etc/nginx/tls/key.pem;
+    # Only modern protocols + cipher suites; matches the SaaS gateway.
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # Strict-Transport-Security: 30 days, no preload (since on-prem
+    # hostnames are usually internal and shouldn't end up on the HSTS
+    # preload list).
+    add_header Strict-Transport-Security "max-age=2592000; includeSubDomains" always;
+
+    include /etc/nginx/snippets/memclaw-locations.conf;
+}

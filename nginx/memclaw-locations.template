@@ -1,0 +1,349 @@
+# Shared body of the on-prem gateway server block.
+# Included by both the HTTP-only and TLS variants of the outer config.
+# Everything that goes *inside* `server { ... }` — server_name,
+# client_max_body_size, all upstream sets, every location block.
+#
+# Variables substituted by docker-entrypoint.sh:
+#   ${SERVER_NAME}          — customer hostname (e.g. memclaw.acme.local)
+#   ${AUTH_UPSTREAM}        — platform-auth-api:8020
+#   ${ADMIN_UPSTREAM}       — platform-admin-api:8001
+#   ${CORE_UPSTREAM}        — core-api:8000
+#   ${APP_UPSTREAM}         — app-frontend:3000
+#   ${CLIENT_MAX_BODY_SIZE} — defaults 16m
+
+server_name ${SERVER_NAME};
+client_max_body_size ${CLIENT_MAX_BODY_SIZE};
+
+# Using `set` + variable in proxy_pass forces per-request DNS
+# resolution (upstream blocks would cache forever).
+set $auth_upstream  "${AUTH_UPSTREAM}";
+set $admin_upstream "${ADMIN_UPSTREAM}";
+set $core_upstream  "${CORE_UPSTREAM}";
+set $app_upstream   "${APP_UPSTREAM}";
+
+# Health endpoint — gateway itself, no upstream. Used by external
+# load balancers to decide readiness before forwarding traffic.
+location = /healthz { return 200 "ok"; add_header Content-Type text/plain; }
+
+# CA cert endpoint — public, unauthenticated. Returns the on-prem
+# server's TLS cert so OpenClaw nodes can trust a self-signed install
+# without per-node manual trust setup. The plugin install script
+# (core-api `_generate_install_script`) bootstraps trust by curling
+# this with -k once (TOFU), saving the cert, and pointing
+# NODE_EXTRA_CA_CERTS at it via a systemd drop-in.
+#
+# Returns 404 cleanly in HTTP-only installs (alias points at a file
+# that doesn't exist), so customers fronting their own TLS terminator
+# don't see a confusing certificate served by us.
+location = /onprem-ca.pem {
+    alias /etc/nginx/tls/cert.pem;
+    default_type application/x-pem-file;
+    add_header Content-Disposition 'attachment; filename="onprem-ca.pem"';
+    add_header Cache-Control "public, max-age=300";
+}
+
+# ── Internal auth_request target ──
+# Sub-request to auth-api's /auth/validate for every /api/* call that
+# needs authn. The response headers carry:
+#   X-Tenant-ID, X-User-Id, X-Agent-Id, X-Org-Read-Only,
+#   X-Readable-Tenant-IDs (cross-tenant credentials), X-Key-Scopes
+# which we then inject into the upstream request so core-api etc. see
+# the auth context + read-only flag (license expiry / org suspension).
+# auth_request never sees the request body and is cheap (auth-api
+# caches the 30s read-only check in-memory).
+location = /_auth {
+    internal;
+    proxy_pass      http://$auth_upstream/api/v1/auth/validate;
+    proxy_method    GET;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_pass_request_headers on;
+}
+
+# ── First-run setup (UNAUTH; backend gates itself on admin_exists) ──
+location /api/setup/ {
+    rewrite ^/api/setup/(.*)$ /api/v1/setup/$1 break;
+    proxy_pass http://$auth_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# ── License status (AUTH via JWT on admin-api) ──
+location /api/license/ {
+    rewrite ^/api/license/(.*)$ /api/v1/license/$1 break;
+    proxy_pass http://$admin_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# ── Auth (login, register, session, OAuth) ──
+# Two blocks — identical behaviour, different path prefix. The dashboard
+# and curl flows use /api/auth/*; the plugin defaults to /api/v1/auth/*
+# (same default as SaaS, where there is no nginx gateway in between).
+# Without the second block /api/v1/auth/verify falls into the /api/
+# catchall, which runs auth_request /_auth. /auth/verify puts the key
+# in the POST body, not X-API-Key, so the subrequest 401s before the
+# real endpoint ever sees the request.
+location /api/auth/ {
+    rewrite ^/api/auth/(.*)$ /api/v1/auth/$1 break;
+    proxy_pass http://$auth_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+location /api/v1/auth/ {
+    proxy_pass http://$auth_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# ── API-keys + agent-keys aliases. The dashboard calls /api/keys and
+#    /api/agent-keys, but admin-api mounts these under its /admin
+#    router prefix — so the real paths are /api/v1/admin/api-keys and
+#    /api/v1/admin/agent-keys. The generic admin rewrite below would
+#    drop the /admin/ segment and 404. SaaS gateway has the same two
+#    explicit blocks; mirror them here.
+location ^~ /api/keys {
+    auth_request /_auth;
+    auth_request_set $tenant_id $upstream_http_x_tenant_id;
+    auth_request_set $user_id $upstream_http_x_user_id;
+    auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
+    auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    rewrite ^/api/keys(.*)$ /api/v1/admin/api-keys$1 break;
+    proxy_pass http://$admin_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Tenant-ID $tenant_id;
+    proxy_set_header X-User-Id $user_id;
+    proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
+    proxy_set_header X-Key-Scopes $key_scopes;
+}
+
+location ^~ /api/agent-keys {
+    auth_request /_auth;
+    auth_request_set $tenant_id $upstream_http_x_tenant_id;
+    auth_request_set $user_id $upstream_http_x_user_id;
+    auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
+    auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    rewrite ^/api/agent-keys(.*)$ /api/v1/admin/agent-keys$1 break;
+    proxy_pass http://$admin_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Tenant-ID $tenant_id;
+    proxy_set_header X-User-Id $user_id;
+    proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
+    proxy_set_header X-Key-Scopes $key_scopes;
+}
+
+# ── Admin + superadmin + orgs + usage (all on admin-api /api/v1/*) ──
+# Match bare or trailing-slash form: /api/orgs  AND  /api/orgs/123
+# NB1: agent-keys is handled above via the ^~ block — drop from here so
+#      the two rules don't fight.
+# NB2: /api/settings is NOT in this list. The frontend's "Tenant
+#      Settings" page calls /api/settings?tenant_id=… and that handler
+#      lives on core-api (memclaw/core-api routes/settings.py), not
+#      admin-api (which only has /admin/settings + /security-audit/settings).
+#      Routing /api/settings here would 404. The /api/ catchall below
+#      forwards it to core-api correctly.
+location ~ ^/api/(admin|superadmin|orgs|usage|security-audit|tenants|billing)(/|$) {
+    auth_request /_auth;
+    auth_request_set $tenant_id $upstream_http_x_tenant_id;
+    auth_request_set $user_id $upstream_http_x_user_id;
+    auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
+    auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    rewrite ^/api/(.*)$ /api/v1/$1 break;
+    proxy_pass http://$admin_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Tenant-ID $tenant_id;
+    proxy_set_header X-User-Id $user_id;
+    proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
+    proxy_set_header X-Key-Scopes $key_scopes;
+}
+
+# ── Full-path admin-api calls. The dashboard occasionally hits the
+#    unrewritten /api/v1/admin/... path directly (agent-keys-panel.tsx
+#    is the current offender). Without this block the generic /api/
+#    fallback below sends those to core-api and 404s. SaaS gateway
+#    has the same `location /api/v1/admin/` → admin-api. Also route
+#    /api/v1/superadmin, /api/v1/billing, /api/v1/usage, /api/v1/orgs
+#    in case any other component is doing the same thing.
+location ~ ^/api/v1/(admin|superadmin|billing|usage|orgs)(/|$) {
+    auth_request /_auth;
+    auth_request_set $tenant_id $upstream_http_x_tenant_id;
+    auth_request_set $user_id $upstream_http_x_user_id;
+    auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
+    auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    proxy_pass http://$admin_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Tenant-ID $tenant_id;
+    proxy_set_header X-User-Id $user_id;
+    proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
+    proxy_set_header X-Key-Scopes $key_scopes;
+}
+
+# ── Memories, search, recall, entities, fleet, documents, evolve, agents
+#    all live on core-api. auth_request so the read-only flag reaches it. ──
+location ~ ^/api/(memories|search|recall|entities|relations|fleet|documents|evolve|agents|brief|tune|transition)(/|$) {
+    auth_request /_auth;
+    auth_request_set $tenant_id $upstream_http_x_tenant_id;
+    auth_request_set $user_id $upstream_http_x_user_id;
+    auth_request_set $agent_id $upstream_http_x_agent_id;
+    auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
+    auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    rewrite ^/api/(.*)$ /api/v1/$1 break;
+    proxy_pass http://$core_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Tenant-ID $tenant_id;
+    proxy_set_header X-User-Id $user_id;
+    proxy_set_header X-Agent-Id $agent_id;
+    proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
+    proxy_set_header X-Key-Scopes $key_scopes;
+}
+
+# ── Plugin install + source — UNAUTH on purpose. OpenClaw's bootstrap
+# script fetches /api/install-plugin and /api/plugin-source?file=X
+# BEFORE it has a session. X-API-Key forwarded when present so keyed
+# variants work. ──
+location ~ ^/api/(install-plugin|plugin-source|plugin-source-hash)($|/|\?) {
+    rewrite ^/api/(.*)$ /api/v1/$1 break;
+    proxy_pass http://$core_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-API-Key $http_x_api_key;
+}
+location ~ ^/api/v1/(install-plugin|plugin-source|plugin-source-hash)($|/|\?) {
+    proxy_pass http://$core_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-API-Key $http_x_api_key;
+}
+
+# ── Version / stats / tool-descriptions — public reads on core-api ──
+location = /api/version           { rewrite ^/api/(.*)$ /api/v1/$1 break; proxy_pass http://$core_upstream; proxy_set_header Host $host; }
+location = /api/stats             { rewrite ^/api/(.*)$ /api/v1/$1 break; proxy_pass http://$core_upstream; proxy_set_header Host $host; }
+location = /api/tool-descriptions { rewrite ^/api/(.*)$ /api/v1/$1 break; proxy_pass http://$core_upstream; proxy_set_header Host $host; }
+
+# ── MCP endpoint — streamable HTTP + websocket upgrade. auth_request
+# validates the X-API-Key and injects tenant/agent/read-only headers
+# so core-api trusts gateway-validated identity instead of seeing
+# the raw key (which is stripped below). ──
+location = /mcp {
+    auth_request /_auth;
+    auth_request_set $tenant_id $upstream_http_x_tenant_id;
+    auth_request_set $agent_id $upstream_http_x_agent_id;
+    auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
+    auth_request_set $key_scopes $upstream_http_x_key_scopes;
+
+    proxy_pass http://$core_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Tenant-ID $tenant_id;
+    proxy_set_header X-Agent-Id $agent_id;
+    proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
+    proxy_set_header X-Key-Scopes $key_scopes;
+    proxy_set_header X-API-Key "";
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 120s;
+}
+location /mcp/ {
+    auth_request /_auth;
+    auth_request_set $tenant_id $upstream_http_x_tenant_id;
+    auth_request_set $agent_id $upstream_http_x_agent_id;
+    auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
+    auth_request_set $key_scopes $upstream_http_x_key_scopes;
+
+    proxy_pass http://$core_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Tenant-ID $tenant_id;
+    proxy_set_header X-Agent-Id $agent_id;
+    proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
+    proxy_set_header X-Key-Scopes $key_scopes;
+    proxy_set_header X-API-Key "";
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 120s;
+}
+
+# ── Everything else under /api/ falls through to CORE-API (not admin!)
+# Anything we haven't explicitly routed is a core-api endpoint (memory
+# types, schemas, tool listings, legacy aliases). auth_request so
+# per-tenant data gets the right X-Tenant-ID + read-only flag. ──
+location /api/ {
+    auth_request /_auth;
+    auth_request_set $tenant_id $upstream_http_x_tenant_id;
+    auth_request_set $user_id $upstream_http_x_user_id;
+    auth_request_set $agent_id $upstream_http_x_agent_id;
+    auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
+    auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    rewrite ^/api/(?!v1/)(.*)$ /api/v1/$1 break;
+    proxy_pass http://$core_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Tenant-ID $tenant_id;
+    proxy_set_header X-User-Id $user_id;
+    proxy_set_header X-Agent-Id $agent_id;
+    proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
+    proxy_set_header X-Key-Scopes $key_scopes;
+}
+
+# ── SPA catch-all → app-frontend ──
+location / {
+    proxy_pass http://$app_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}

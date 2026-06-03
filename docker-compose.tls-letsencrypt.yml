@@ -1,0 +1,56 @@
+# Let's Encrypt overlay — runs Caddy as a TLS-terminating reverse proxy in
+# front of the existing nginx gateway. Caddy handles ACME issuance + renewal
+# transparently; nginx stays HTTP-only on a private docker network.
+#
+# Use with:
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.tls-letsencrypt.yml up -d
+#
+# install.sh wires this overlay automatically when called with
+# --tls-letsencrypt --tls-domain X --tls-email Y. It writes the Caddyfile
+# rendered from the customer-supplied domain + email into ./caddy/ and
+# bind-mounts it here.
+#
+# Why a sidecar instead of replacing nginx:
+#   nginx already does the auth_request gymnastics + path rewrites + WS
+#   upgrades for /mcp. Re-implementing those in Caddy is a big refactor we
+#   don't need. Caddy-in-front gives us automatic ACME with zero changes
+#   to the rest of the gateway config; nginx only loses its public port.
+
+services:
+  gateway:
+    # Hide nginx from the host — it now only talks to Caddy on the docker
+    # network. Compose merges `ports:` by union (de-duped by target port)
+    # rather than replace, so a plain `ports: []` is a no-op — the base
+    # file's host mapping survives. `!reset null` is the Compose v2.24+
+    # idiom that actually empties the inherited list.
+    ports: !reset null
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      # Caddy needs port 80 reachable from the internet for HTTP-01 ACME.
+      # Customers behind a NAT have to forward 80→VM:80 the first time
+      # (and on every renewal) — DNS-01 is a more advanced setup we don't
+      # support yet (would need a DNS-provider plugin per customer).
+      - "${BIND_ADDRESS:-0.0.0.0}:80:80"
+      - "${BIND_ADDRESS:-0.0.0.0}:443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # account key + issued certs
+      - caddy_config:/config
+    depends_on:
+      gateway:
+        condition: service_started
+    # Inline logging config — YAML anchors from docker-compose.yml don't
+    # cross-file in compose's merge model.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  caddy_data:
+  caddy_config:

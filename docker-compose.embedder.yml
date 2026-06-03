@@ -1,0 +1,28 @@
+# Overlay for customers who want local embeddings (no external LLM dep).
+#
+# Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.embedder.yml up -d          # connected
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.airgap.yml \
+#                  -f docker-compose.embedder.yml up -d                                 # air-gap
+#
+# Swaps the slim core-api image for the fatter variant with
+# sentence-transformers + the BAAI/bge-base-en-v1.5 weights baked in.
+# See ./core-api-embedder/Dockerfile for what's added (~1.5GB).
+
+services:
+  core-api:
+    # Order of overrides: this compose file is listed LAST in the -f chain,
+    # so its image: wins over docker-compose.airgap.yml. Air-gap installs
+    # must have EITHER the embedder image loaded locally (install.sh picks
+    # it up via airgap-load.sh) OR the slim core-api image AND an LLM key
+    # in .env — never both required.
+    image: "ghcr.io/caura-ai/memclaw-core-api-embedder:${MEMCLAW_VERSION:-latest}"
+    environment:
+      # Pin the provider so the LocalEmbedding path is taken; override any
+      # customer .env that might set this to "fake" or blank.
+      EMBEDDING_PROVIDER: "local"
+      EMBEDDING_MODEL: "BAAI/bge-base-en-v1.5"
+      # Offline env vars — baked in the image too, set here for clarity.
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_OFFLINE: "1"

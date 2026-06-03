@@ -1,0 +1,45 @@
+# install.conf — silent / unattended install template for install.sh.
+#
+# Usage:
+#   ./install.sh --config install.conf --non-interactive
+#
+# Precedence: CLI flags > env vars (MEMCLAW_*) > this file > defaults.
+# Every field is optional; install.sh auto-generates secrets if omitted.
+
+# Required
+hostname = "memclaw.acme.local"
+admin_email = "admin@acme.local"
+# Either admin_password (inline) or admin_password_file (preferred for secrets)
+# admin_password = "..."
+admin_password_file = "/run/secrets/memclaw_admin_pw"
+license = "/path/to/license.key"                  # OR license_url = "https://..."
+
+# LLM / embedding — pick one path
+llm_provider = "openai"                           # openai | anthropic | gemini | local
+openai_api_key_file = "/run/secrets/openai_api_key"
+embedding_provider = "local"                      # air-gap default
+entity_extraction_provider = "none"
+
+# Database — omit all for the bundled postgres service (default).
+# Set postgres_host to use an external/managed instance. The target DB
+# must have the pgvector extension available and a CREATE-capable user.
+# postgres_host = "db.internal.acme.com"
+# postgres_port = "5432"
+# postgres_user = "memclaw"
+# postgres_db   = "memclaw"
+# postgres_require_ssl = "true"
+
+# Email
+email_provider = "log"                            # log | sendgrid | resend | smtp
+# email_api_key_file = "/run/secrets/sendgrid"
+
+# Generated if blank
+jwt_secret_file = ""
+postgres_password_file = ""
+core_admin_api_key_file = ""
+
+# Install location / mode
+memclaw_home = "/opt/memclaw"
+memclaw_version = "v1.0.0"                        # pin for reproducibility
+offline = false                                   # true = use docker-compose.airgap.yml
+skip_admin = false                                # true = let web wizard create the admin

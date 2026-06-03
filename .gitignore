@@ -1,0 +1,36 @@
+.env
+.env.*
+!.env.example
+
+# License file — provided by each customer, never committed
+license/*.key
+license/license.key
+
+# TLS certs
+nginx/tls/*.pem
+nginx/tls/*.crt
+nginx/tls/*.key
+
+# Install artifacts
+install-result.json
+install.state.json
+/opt/memclaw
+
+# Air-gap tarballs
+*.tar.gz
+memclaw-onprem-*.tar
+
+# Backups
+backups/
+*.sql.gz
+
+# Editor junk
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/

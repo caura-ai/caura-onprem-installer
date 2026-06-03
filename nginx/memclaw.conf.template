@@ -1,0 +1,21 @@
+# On-prem gateway config — HTTP-only variant.
+#
+# Used when the customer hasn't provided a TLS cert (default install).
+# Customers fronting MemClaw with their own TLS terminator (Caddy,
+# Traefik, cloud LB, etc.) keep this and pass through. Customers who
+# want MemClaw itself to terminate TLS install certs into
+# $MEMCLAW_HOME/tls/ — install.sh writes that mount and the entrypoint
+# renders memclaw-tls.conf.template instead of this one.
+#
+# All location rules live in memclaw-locations.conf so the HTTP and
+# TLS variants share a single source of truth.
+
+# Docker's embedded DNS — revalidate every 10s so backend restarts
+# (which change container IPs) don't leave nginx holding stale upstream
+# addresses and returning 502s for up to an hour.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+server {
+    listen 80 default_server;
+    include /etc/nginx/snippets/memclaw-locations.conf;
+}
