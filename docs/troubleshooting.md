@@ -163,10 +163,10 @@ runtime-config shim (`/env-config.js`) isn't being served.
 **Fix**: verify the shim is live:
 
 ```bash
-curl -s http://memclaw.acme.local/env-config.js
+curl -s http://memclaw.acme.com/env-config.js
 # → window.__MEMCLAW_CONFIG__ = {
-# →   apiUrl: "https://memclaw.acme.local",
-# →   siteUrl: "https://memclaw.acme.local",
+# →   apiUrl: "https://memclaw.acme.com",
+# →   siteUrl: "https://memclaw.acme.com",
 # →   billingEnabled: false,
 # → };
 ```
@@ -291,6 +291,40 @@ recognise (e.g. a dict repr with unusual quoting).
    base64-encoded hashes or fingerprints), add `--skip-leak-scan` to
    `support upload` after auditing.
 3. Open a ticket so we can add the missing pattern.
+
+## Admin creation fails with HTTP 422 (invalid email)
+
+`install.sh` ends with `ERROR /setup/admin failed` and a 422 like:
+
+```
+value is not a valid email address: The part after the @-sign is a
+special-use or reserved name that cannot be used with email.
+```
+
+The admin email uses a **reserved TLD** (`.local`, `.test`, `.example`,
+`.invalid`, or `localhost`). Email validation rejects these. Use a real,
+deliverable domain — `admin@yourcompany.com`, not `admin@memclaw.local`.
+The VM's `--hostname` can still be anything (it's only the `server_name`);
+this constraint applies only to the admin email.
+
+```sh
+# fix and re-run admin creation (stack is already up):
+curl -sk -X POST https://$PUBLIC_HOSTNAME/api/setup/admin \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@yourcompany.com","password":"<strong>","org_name":"yourorg"}'
+```
+
+## Recall returns `503 Embedding service unavailable`
+
+Memory *writes* succeed (embedding is deferred) but *recall* / semantic
+search 503s. The stack has no reachable embedding backend:
+
+- **Connected installs:** set `EMBEDDING_PROVIDER=openai` (or anthropic /
+  gemini) and a valid API key in `/opt/memclaw/.env`, then
+  `docker compose up -d core-api`. Confirm the provider is reachable from
+  the VM (egress / proxy).
+- **Local embeddings:** requires the bundled embedder image — see
+  `install-airgap.md` for availability and how to enable it.
 
 ## Getting more help
 

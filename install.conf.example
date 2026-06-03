@@ -7,8 +7,8 @@
 # Every field is optional; install.sh auto-generates secrets if omitted.
 
 # Required
-hostname = "memclaw.acme.local"
-admin_email = "admin@acme.local"
+hostname = "memclaw.acme.com"
+admin_email = "admin@acme.com"
 # Either admin_password (inline) or admin_password_file (preferred for secrets)
 # admin_password = "..."
 admin_password_file = "/run/secrets/memclaw_admin_pw"

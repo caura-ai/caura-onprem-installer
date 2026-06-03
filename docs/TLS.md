@@ -31,14 +31,14 @@ internally; your terminator handles TLS.
 Install:
 ```
 curl -sL https://onprem.caura.ai/install.sh | sudo bash -s -- \
-  --hostname memclaw.acme.local \
+  --hostname memclaw.acme.com \
   --bind-address 127.0.0.1 \
   --no-tls
 ```
 
 Your proxy:
 - Listens on 443 with your cert.
-- Sets `X-Forwarded-Proto: https`, `X-Forwarded-For`, `Host: memclaw.acme.local`.
+- Sets `X-Forwarded-Proto: https`, `X-Forwarded-For`, `Host: memclaw.acme.com`.
 - Proxies to `http://<host>:80` where MemClaw is listening on loopback.
 
 MemClaw honours `X-Forwarded-Proto`, so generated URLs (license
@@ -52,14 +52,14 @@ public DNS or a corporate CA available.
 Install:
 ```
 curl -sL https://onprem.caura.ai/install.sh | sudo bash -s -- \
-  --hostname memclaw.acme.local \
+  --hostname memclaw.acme.com \
   --tls-self-signed \
-  --tls-domain memclaw.acme.local
+  --tls-domain memclaw.acme.com
 ```
 
 What happens:
 - `openssl` generates an RSA-2048 cert valid 10 years with SAN
-  `DNS:memclaw.acme.local, DNS:localhost, IP:127.0.0.1`.
+  `DNS:memclaw.acme.com, DNS:localhost, IP:127.0.0.1`.
 - `cert.pem` + `key.pem` land in `$MEMCLAW_HOME/tls/`.
 - The gateway entrypoint detects them and switches to the TLS
   template — port 80 redirects to 443; HSTS for 30 days.
@@ -95,9 +95,9 @@ Renewal: drop the new cert in place and `docker compose restart gateway`.
 Once MemClaw runs HTTPS, OpenClaw nodes should reach it over HTTPS too:
 
 ```
-curl -s -X POST "https://memclaw.acme.local/api/v1/install-plugin" \
+curl -s -X POST "https://memclaw.acme.com/api/v1/install-plugin" \
   -H "Content-Type: application/json" \
-  -d '{"fleet_id":"prod","api_url":"https://memclaw.acme.local","api_key":"mc_..."}' \
+  -d '{"fleet_id":"prod","api_url":"https://memclaw.acme.com","api_key":"mc_..."}' \
   | bash
 ```
 

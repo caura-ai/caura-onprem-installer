@@ -4,6 +4,19 @@ For customer VMs with **no outbound internet**. The tarball bundles every
 image needed (MemClaw services + upstream bases: Postgres/pgvector, Redis,
 RabbitMQ) so `docker compose` never needs to pull.
 
+> **Local embeddings (`--embedding-provider local`).** A true air-gap
+> install needs the bundled embedder image (`memclaw-core-api-embedder`,
+> model weights baked in, ~1.5 GB) — it swaps in via
+> `docker-compose.embedder.yml` and the installer engages it automatically
+> when `EMBEDDING_PROVIDER=local` and no LLM key is set. **Confirm the
+> embedder image for your target version is present in the release
+> tarball before installing** (`docker images | grep core-api-embedder`,
+> tag must match `MEMCLAW_VERSION`). If it's absent, either obtain a
+> tarball that includes it from Caura, or run connected with an external
+> embedding provider (OpenAI / Anthropic / Gemini). Without an embedder
+> image, memory writes still work but semantic recall returns
+> `503 Embedding service unavailable`.
+
 ## Prerequisites
 
 - Ubuntu 22.04 or equivalent, **Docker ≥ 24**, **docker compose v2**.
@@ -42,8 +55,8 @@ if you don't pass a path.
 ./install.sh \
   --non-interactive \
   --offline \
-  --hostname memclaw.acme.local \
-  --admin-email admin@acme.local \
+  --hostname memclaw.acme.com \
+  --admin-email admin@acme.com \
   --admin-password-file /run/secrets/admin_pw \
   --license /path/to/license.key \
   --embedding-provider local \
@@ -74,7 +87,7 @@ Two options, both do the same thing:
 **B. Pass `--skip-admin` and finish in the browser**:
 ```bash
 ./install.sh --non-interactive --offline --hostname ... --license ... --skip-admin
-# → Visit https://memclaw.acme.local/setup
+# → Visit https://memclaw.acme.com/setup
 ```
 
 The web wizard uploads the license, creates the first admin, and prints
@@ -86,16 +99,16 @@ returns 404 from then on (enforced server-side by the first-run gate in
 
 ```bash
 # Health via the gateway (port 80)
-curl -sf http://memclaw.acme.local/healthz
+curl -sf http://memclaw.acme.com/healthz
 # → ok
 
 # License status — behind JWT auth, use the admin account you just created
-JWT=$(curl -s -X POST http://memclaw.acme.local/api/auth/user/login \
+JWT=$(curl -s -X POST http://memclaw.acme.com/api/auth/user/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@acme.local","password":"..."}' \
+  -d '{"email":"admin@acme.com","password":"..."}' \
   | jq -r .access_token)
 
-curl -s http://memclaw.acme.local/api/license/status \
+curl -s http://memclaw.acme.com/api/license/status \
   -H "Authorization: Bearer $JWT" | jq '.severity, .days_remaining'
 # → "ok"
 # → 364
