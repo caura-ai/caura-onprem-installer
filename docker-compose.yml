@@ -121,6 +121,10 @@ services:
       PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
       CORE_API_URL: http://core-api:8000
       CORE_ADMIN_API_KEY: "${CORE_ADMIN_API_KEY:?set CORE_ADMIN_API_KEY in .env}"
+      # Gates the cron fanout endpoints (/api/v1/security/fanout/*,
+      # /api/v1/org-lifecycle/fanout/*) that platform-operations POSTs to.
+      # Must equal the value on the platform-operations service.
+      PLATFORM_OPERATIONS_INTERNAL_TOKEN: "${PLATFORM_OPERATIONS_INTERNAL_TOKEN:?install.sh generates this}"
       JWT_SECRET: "${JWT_SECRET}"
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -167,6 +171,28 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    logging: *default-logging
+
+  # Enterprise scheduler: fires cron fanout POSTs to platform-admin-api on a
+  # fixed interval — session-cleanup (5m) and org-hard-delete-sweep (24h).
+  # In-process asyncio scheduler → MUST stay single-replica (the image runs
+  # uvicorn --workers 1; do not scale). Loosely coupled (HTTP only), so its
+  # image tag is pinned to MEMCLAW_OPS_VERSION (normally == MEMCLAW_VERSION).
+  platform-operations:
+    image: "ghcr.io/caura-ai/memclaw-platform-operations:${MEMCLAW_OPS_VERSION:-${MEMCLAW_VERSION:-latest}}"
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      # admin-api listens on :8001 internally (NOT the 8101 cloud default).
+      PLATFORM_ADMIN_API_URL: http://platform-admin-api:8001
+      PLATFORM_OPERATIONS_INTERNAL_TOKEN: "${PLATFORM_OPERATIONS_INTERNAL_TOKEN:?install.sh generates this}"
+      LOG_FORMAT_JSON: "true"
+      LOG_FILE: /var/log/memclaw/platform-operations/platform-operations.log
+    volumes:
+      - ./logs/platform-operations:/var/log/memclaw/platform-operations
+    depends_on:
+      platform-admin-api:
+        condition: service_started
     logging: *default-logging
 
   core-storage-api:
