@@ -228,6 +228,13 @@ POSTGRES_PASSWORD=$(read_file "$POSTGRES_PASSWORD_FILE" || true)
 CORE_ADMIN_API_KEY=$(read_file "$CORE_ADMIN_API_KEY_FILE" || true)
 [ -n "${CORE_ADMIN_API_KEY:-}" ] || CORE_ADMIN_API_KEY="mc_admin_$(random_hex 24)"
 
+# Shared secret presented by platform-operations as ``X-Internal-Token`` on
+# its cron fanout POSTs (session-cleanup, org-hard-delete-sweep); platform-
+# admin-api gates those endpoints on the matching value. Must be identical
+# on both services — both read the single .env var below.
+PLATFORM_OPERATIONS_INTERNAL_TOKEN="${PLATFORM_OPERATIONS_INTERNAL_TOKEN:-}"
+[ -n "${PLATFORM_OPERATIONS_INTERNAL_TOKEN:-}" ] || PLATFORM_OPERATIONS_INTERNAL_TOKEN="mc_opstok_$(random_hex 24)"
+
 # Fernet key for core-api settings encryption. Required when
 # ENVIRONMENT=production; no sensible default. Generate one if the
 # caller didn't supply it.
@@ -504,10 +511,16 @@ cat > "$MEMCLAW_HOME/.env" <<EOF
 # Rendered by install.sh $(date -u +%Y-%m-%dT%H:%M:%SZ). Do not edit while
 # the stack is running — rerun ./install.sh to regenerate.
 MEMCLAW_VERSION=${MEMCLAW_VERSION}
+# Image tag for the scheduler/worker services (platform-operations, and in a
+# later phase core-operations/core-worker). Normally equal to MEMCLAW_VERSION;
+# kept as a separate knob so the operations sidecars can be rolled out on a
+# release that the core stack hasn't moved to yet (phased on-prem parity).
+MEMCLAW_OPS_VERSION=${MEMCLAW_OPS_VERSION:-${MEMCLAW_VERSION}}
 PUBLIC_HOSTNAME=${HOSTNAME}
 JWT_SECRET=${JWT_SECRET}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 CORE_ADMIN_API_KEY=${CORE_ADMIN_API_KEY}
+PLATFORM_OPERATIONS_INTERNAL_TOKEN=${PLATFORM_OPERATIONS_INTERNAL_TOKEN}
 # Database target. Blank host = bundled postgres service (default).
 # Set POSTGRES_HOST to use an external instance (must have pgvector +
 # a CREATE-capable user; see docs/database.md).
