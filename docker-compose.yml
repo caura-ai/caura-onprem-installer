@@ -195,6 +195,30 @@ services:
         condition: service_started
     logging: *default-logging
 
+  # OSS lifecycle scheduler (CAURA-655/656/657): fires periodic cron fanouts to
+  # core-api (archive-expired/stale, purge-soft-deleted, crystallize, entity-link,
+  # insights). On-prem, core-api consumes these IN-PROCESS on the InProcess event
+  # bus (register_archive_consumers + register_pipeline_consumers), so NO core-worker
+  # is needed here — core-worker is the SaaS/pubsub offload. Uses the existing
+  # CORE_ADMIN_API_KEY (no new secret). In-process scheduler -> single-replica.
+  core-operations:
+    image: "ghcr.io/caura-ai/memclaw-core-operations:${MEMCLAW_OPS_VERSION:-${MEMCLAW_VERSION:-latest}}"
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      STANDALONE: "false"
+      CORE_API_URL: http://core-api:8000
+      CORE_API_ADMIN_API_KEY: "${CORE_ADMIN_API_KEY:?set CORE_ADMIN_API_KEY in .env}"
+      CORE_STORAGE_API_URL: http://core-storage-api:8002
+      LOG_FORMAT_JSON: "true"
+      LOG_FILE: /var/log/memclaw/core-operations/core-operations.log
+    volumes:
+      - ./logs/core-operations:/var/log/memclaw/core-operations
+    depends_on:
+      core-api:
+        condition: service_started
+    logging: *default-logging
+
   core-storage-api:
     image: "ghcr.io/caura-ai/memclaw-core-storage:${MEMCLAW_VERSION:-latest}"
     restart: unless-stopped
