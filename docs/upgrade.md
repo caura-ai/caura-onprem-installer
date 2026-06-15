@@ -4,6 +4,13 @@ Upgrades are **tag-driven** and fully reversible. Bump `MEMCLAW_VERSION`
 in `.env`, pull the new images, restart. Data stays in Docker named
 volumes — never touched by the upgrade.
 
+> **Operators / Caura-managed fleet:** if the deployment fronts the stack with
+> the TLS (Caddy) overlay or runs the scheduler services (`core-operations`,
+> `platform-operations`), follow the
+> [operator runbook](upgrade-runbook-operator.md) instead — it covers the
+> explicit `-f` overlay files, staging-first validation, and the scheduler
+> images. The flow below is the minimal customer path.
+
 ## Supported upgrade path
 
 **Sequential minor versions only.** v1.0.x → v1.1.x, then v1.1.x → v1.2.x.
