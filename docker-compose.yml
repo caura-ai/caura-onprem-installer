@@ -210,10 +210,10 @@ services:
       CORE_API_URL: http://core-api:8000
       CORE_API_ADMIN_API_KEY: "${CORE_ADMIN_API_KEY:?set CORE_ADMIN_API_KEY in .env}"
       CORE_STORAGE_API_URL: http://core-storage-api:8002
+      # Log to stdout (captured by the json-file driver) instead of a
+      # bind-mounted file: the core-operations image runs as a NON-root user,
+      # so a host-owned ./logs dir isn't writable without a chmod dance.
       LOG_FORMAT_JSON: "true"
-      LOG_FILE: /var/log/memclaw/core-operations/core-operations.log
-    volumes:
-      - ./logs/core-operations:/var/log/memclaw/core-operations
     depends_on:
       core-api:
         condition: service_started
