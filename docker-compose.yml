@@ -263,6 +263,14 @@ services:
       REDIS_URL: redis://redis:6379/0
       IS_STANDALONE: "false"
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      # Reserved-agent-id write policy (allow|warn|reject). Wired from .env so
+      # it is durable across upgrades — upgrade.sh regenerates this compose file
+      # but preserves .env, so the operator's choice survives. Default warn
+      # keeps the code default; on-prem sites hardening the bare-"main" firehose
+      # set RESERVED_AGENT_ID_POLICY=reject in .env. (Previously only settable
+      # via an override, which upgrade.sh dropped on recreate — the durability
+      # bug this line fixes.)
+      RESERVED_AGENT_ID_POLICY: "${RESERVED_AGENT_ID_POLICY:-warn}"
       ADMIN_API_KEY: "${CORE_ADMIN_API_KEY}"
       # core-api in ENVIRONMENT=production refuses to start without these.
       JWT_SECRET: "${JWT_SECRET}"
