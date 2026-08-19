@@ -67,6 +67,22 @@ If any `CONCURRENTLY` build is killed it leaves an **invalid** index — drop it
 > `embedded_content_hash`, a column that migration 037 adds. It indexes 0 rows at creation
 > (the new column is all-NULL), so it is cheap regardless; do not attempt to pre-create it.
 
+**erni dry-run baseline (2026-08-20).** Drop+rebuild of the heaviest index validated the exact
+DDL and gives a per-row anchor (no contention, small box):
+
+| table | erni rows | note |
+|-------|----------:|------|
+| `memories` | 16,123 | |
+| `memory_entity_links` | 156,948 | drives the full-btree build |
+| `relations` | 65,361 | |
+| `documents` | 1 | 038 scan not exercisable here; 0 NULL timestamps |
+
+`CREATE INDEX CONCURRENTLY ix_memory_entity_links_entity_id` on 156,948 rows = **0.33 s**
+(index 3.1 MB, valid) → ≈ **2 µs/row** with no write contention. Pre-building has **no health
+gate**, so absolute time is not a constraint — the point is to keep this build *out* of the
+180 s upgrade gate. The remaining in-gate unknown is 038's `VALIDATE` scan of `documents`
+(empty on erni); size it in Phase 0 — the `--health-timeout 600` covers it.
+
 ### Phase 2 — upgrade with a widened health gate (low-traffic window)
 ```bash
 curl -sL https://onprem.caura.ai/upgrade.sh | sudo bash -s -- --to v2.11.16 --health-timeout 600
