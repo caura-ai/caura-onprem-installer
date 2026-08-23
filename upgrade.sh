@@ -44,11 +44,22 @@ set -euo pipefail
 # Fix: if we're running script-from-stdin, download ourselves to a tempfile
 # and re-exec from that real file. The new bash reads its script from fd
 # (the script arg), not fd 0, so no subprocess can race us.
-if [ -z "${MEMCLAW_UPGRADE_REEXEC:-}" ] \
+# Both spellings of the guard are concatenated, so either one being set means
+# "already re-exec'd". Only the old name is ever written (below) — reading both
+# just keeps the pair consistent with every other name here, and an empty value
+# on either side still reads as "not yet re-exec'd", which is the safe
+# direction: at worst the download-and-re-exec runs one extra time.
+#
+# Hoisted into a variable rather than tested inline because the `if` below is a
+# line-continued condition, and a `\` line cannot carry the trailing exemption
+# comment the ratchet needs on the line holding the old name.
+_reexec_guard="${CAURA_UPGRADE_REEXEC:-}${MEMCLAW_UPGRADE_REEXEC:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+if [ -z "$_reexec_guard" ] \
    && { [ "${BASH_SOURCE[0]:-$0}" = "bash" ] \
         || [ "${BASH_SOURCE[0]:-$0}" = "-bash" ] \
         || [ ! -r "${BASH_SOURCE[0]:-$0}" ]; }; then
   _src="${MEMCLAW_UPGRADE_URL:-https://onprem.caura.ai/upgrade.sh}"
+  _src="${CAURA_UPGRADE_URL:-$_src}"
   _tmp=$(mktemp /tmp/memclaw-upgrade.XXXXXX.sh)
   if ! curl -fsSL "$_src" -o "$_tmp"; then
     echo "ERROR: failed to download $_src for local re-exec" >&2
@@ -59,13 +70,21 @@ if [ -z "${MEMCLAW_UPGRADE_REEXEC:-}" ] \
 fi
 
 # ── Defaults ────────────────────────────────────────────────────────────────
+#
+# Each knob resolves the historical spelling first and is then overridden by its
+# CAURA_* twin when that one is NON-EMPTY. First non-empty, never first defined
+# — see the same block in install.sh for why blank has to mean absent on a
+# hand-edited file.
 MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"
+MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 TARGET_VERSION=""                  # --to, or auto-resolved from :latest
 DRY_RUN="false"
 SKIP_BACKUP="false"
 ASSUME_YES="${MEMCLAW_YES:-false}"  # -y / --yes, or MEMCLAW_YES=1
+ASSUME_YES="${CAURA_YES:-$ASSUME_YES}"
 HEALTH_TIMEOUT_S=180
 BUNDLE_URL="${MEMCLAW_BUNDLE_URL:-https://onprem.caura.ai/bundle.tar.gz}"
+BUNDLE_URL="${CAURA_BUNDLE_URL:-$BUNDLE_URL}"
 
 # Services we expect to find running and re-verify post-upgrade.
 # Keep in sync with docker-compose.yml.
@@ -96,10 +115,29 @@ resolve_target_version() {
   die "--to <version> is required (e.g. --to v1.0.0-rc2). Use 'latest' to pin to the floating tag." 2
 }
 
+# One key out of .env. Prints empty and returns 0 when the key is missing, so a
+# caller can use it under `set -euo pipefail` — same contract as _GET below,
+# which this predates in the file only because current_version() needs it here.
+_env_key() {
+  local _envfile="$MEMCLAW_HOME/.env"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  grep -E "^$1=" "$_envfile" 2>/dev/null \
+    | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true
+}
+
 current_version() {
-  # Read MEMCLAW_VERSION from .env. Empty → never installed / unknown.
-  grep -E '^MEMCLAW_VERSION=' "$MEMCLAW_HOME/.env" 2>/dev/null \
-    | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'"
+  # The tag this install is pinned to, from .env, under either spelling.
+  # Empty → never installed / unknown.
+  #
+  # FIRST NON-EMPTY, not first present, and this is the site where that matters
+  # most: .env is hand-edited by operators (docs/upgrade.md tells them to sed it
+  # directly), so a file carrying a blank CAURA_VERSION= from a newer template
+  # beside the filled old-name key that is actually driving the stack is the
+  # ordinary half-migrated state. Reading the blank one makes upgrade.sh refuse
+  # a healthy install with "nothing to upgrade from".
+  local v
+  v=$(_env_key CAURA_VERSION)
+  [ -n "$v" ] || v=$(_env_key MEMCLAW_VERSION)  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  printf '%s' "$v"
 }
 
 # ── Parse flags ─────────────────────────────────────────────────────────────
@@ -201,6 +239,16 @@ _GET() {
   grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true
 }
 _TLS_MODE=$(_GET MEMCLAW_TLS_MODE)
+# The CAURA_* spelling of the same key wins only when it is NON-EMPTY, and this
+# is the sharpest instance of that rule in the repo. An empty _TLS_MODE is not
+# an error here — it means "add no overlay", so a blank CAURA_TLS_MODE= sitting
+# in a hand-edited .env beside the old-name key holding "letsencrypt", which is
+# what actually drives the stack, would drop the Caddy sidecar on upgrade. The
+# customer's ACME terminator disappears, the gateway takes its host ports back,
+# and every service reports healthy: the upgrade "succeeds" while TLS quietly
+# stops being served. Nothing in this script would go red.
+_TLS_MODE_NEW=$(_GET CAURA_TLS_MODE)
+[ -n "$_TLS_MODE_NEW" ] && _TLS_MODE="$_TLS_MODE_NEW"
 _EMBED_PROVIDER=$(_GET EMBEDDING_PROVIDER)
 _OPENAI_KEY=$(_GET OPENAI_API_KEY)
 _PLATFORM_EMBED_KEY=$(_GET PLATFORM_EMBEDDING_API_KEY)
@@ -244,27 +292,56 @@ if ! curl -fsSL "$BUNDLE_URL" | tar -xz -C . ; then
   die "Failed to fetch bundle from $BUNDLE_URL" 3
 fi
 
-# Mutate MEMCLAW_VERSION in .env (in-place). Keep the file otherwise.
-if grep -q '^MEMCLAW_VERSION=' .env; then
-  sed -i.bak "s/^MEMCLAW_VERSION=.*/MEMCLAW_VERSION=${TO_VERSION}/" .env
-else
-  echo "MEMCLAW_VERSION=${TO_VERSION}" >> .env
+# Rewrite an existing `$1=` line in .env in place. Returns non-zero, and
+# changes nothing, when the key is not in the file — it never ADDS one.
+#
+# That restriction is the point of the helper rather than a limitation of it.
+# The version keys are read in precedence order (new spelling first, here and in
+# every compose file), so whichever of them the file carries is the one actually
+# driving the stack, and every one it carries has to move together. But
+# introducing the new spelling into a customer's .env is a writer change that
+# belongs to item 5.4, and an upgrade is not the moment to make it.
+_rewrite_env_key() {
+  grep -q "^$1=" .env || return 1
+  sed -i.bak "s/^$1=.*/$1=$2/" .env
+  rm -f .env.bak
+}
+
+# Mutate the version in .env (in-place). Keep the file otherwise.
+#
+# BOTH spellings, or the upgrade silently no-ops. Every compose file resolves an
+# image tag by taking the new spelling of the version key first and the old one
+# only as its fallback, so on a .env that carries a non-empty new-spelling key,
+# moving only the old one leaves every image pinned to the tag the new one still
+# names: `pull` and `up -d` re-resolve to the version already running, nothing
+# restarts, every health check passes because nothing changed, and this script
+# prints "Upgrade complete" over an upgrade that did not happen. Reading in one
+# order and writing in another is the whole bug.
+if ! _rewrite_env_key MEMCLAW_VERSION "$TO_VERSION"; then  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  echo "MEMCLAW_VERSION=${TO_VERSION}" >> .env  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 fi
-rm -f .env.bak
+# Present-but-blank is rewritten too, which is deliberate: the file already
+# names the key, and after this it names the version that is actually running.
+_rewrite_env_key CAURA_VERSION "$TO_VERSION" || true
 
 # ── Rollback helpers (defined before any call site) ────────────────────────
 _rollback_pre_up() {
   # Revert .env and leave old containers running — no up -d ran yet.
   local why="$1"
   warn "Rolling back .env → $FROM_VERSION (cause: $why)"
-  sed -i "s/^MEMCLAW_VERSION=.*/MEMCLAW_VERSION=${FROM_VERSION}/" .env
+  # Both keys, for the reason the bump above spells out — and it bites harder
+  # on this path: a rollback that moves only one of them leaves the stack
+  # pinned to the version we were rolling AWAY from, reported as recovered.
+  _rewrite_env_key MEMCLAW_VERSION "$FROM_VERSION" || true  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  _rewrite_env_key CAURA_VERSION "$FROM_VERSION" || true
 }
 
 _rollback() {
   # Full rollback: flip .env, up -d on old tag, best-effort restore backup.
   local why="$1"
   warn "Rolling back to $FROM_VERSION (cause: $why)"
-  sed -i "s/^MEMCLAW_VERSION=.*/MEMCLAW_VERSION=${FROM_VERSION}/" .env
+  _rewrite_env_key MEMCLAW_VERSION "$FROM_VERSION" || true  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  _rewrite_env_key CAURA_VERSION "$FROM_VERSION" || true
   if ! docker compose "${COMPOSE_FILES[@]}" up -d; then
     warn "compose up -d during rollback ALSO failed — manual recovery needed."
     warn "Backup (if taken): $MEMCLAW_HOME/$BACKUP_PATH"

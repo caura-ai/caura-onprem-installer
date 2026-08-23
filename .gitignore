@@ -34,3 +34,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 *.egg-info/
+# setuptools' staging dir, left behind by a `pip install` of the CLI package —
+# which the env-dual-read CI job runs, and which anyone reproducing it locally
+# will run too. It is a byte-copy of src/, so committing it would silently
+# double every string the ratchet and the sentinel count.
+build/

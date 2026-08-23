@@ -4,7 +4,7 @@
 
 services:
   core-api:
-    image: "memclaw-onprem/core-api-embedder:${MEMCLAW_VERSION:-latest}"
+    image: "memclaw-onprem/core-api-embedder:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     environment:
       EMBEDDING_PROVIDER: "local"
       EMBEDDING_MODEL: "BAAI/bge-base-en-v1.5"

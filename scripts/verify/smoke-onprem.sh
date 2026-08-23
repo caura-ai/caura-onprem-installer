@@ -16,7 +16,10 @@
 
 set -euo pipefail
 
+# The install root, under either spelling — old name first, CAURA_HOME
+# overriding only when non-empty. See scripts/backup.sh for the full note.
 MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"
+MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 BASE_URL="${BASE_URL:-}"
 ADMIN_JWT="${ADMIN_JWT:-}"
 ADMIN_API_KEY="${ADMIN_API_KEY:-}"

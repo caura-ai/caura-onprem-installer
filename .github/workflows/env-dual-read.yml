@@ -1,0 +1,66 @@
+name: Environment dual-read
+
+# Phase 5.3. Every environment name this repo reads is readable under the
+# CAURA_* spelling as well as the historical one, and every dual-read resolves
+# to the first NON-EMPTY name rather than the first defined one.
+#
+# The second half is the one that needs a gate. Getting it wrong does not fail
+# anywhere: these names land in install.conf and .env, files a customer
+# hand-edits, so the ordinary half-migrated state is a new name present and
+# blank beside a working old one -- and several consumers here read an empty
+# value as "skip this step" rather than "refuse". A first-defined resolution
+# then drops the Authorization header, drops the letsencrypt overlay, or sends
+# an air-gapped install off to fetch a bundle, with every service still
+# reporting healthy. Nothing in a smoke test would catch it, so it is asserted.
+#
+# Unlike the ratchet and the sentinel, this one is NOT a copy of anything in
+# caura-ai/caura. The properties are the same as OSS #886's, but the surfaces
+# are this repo's alone: two hand-edited config files, a compose interpolation
+# layer, a shell installer and a click CLI.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dual-read:
+    name: Environment dual-read
+    runs-on: ubuntu-latest
+    # Seconds of work; no fetch, and the compose check is a `config` parse
+    # rather than anything that pulls or starts a container.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.13"
+
+      # The CLI package, not just pytest: the dual-read tests import it to
+      # read the resolved defaults out of a real import, and pin click's
+      # multi-envvar resolution against the version pyproject actually allows.
+      # Reading the source text instead would pass on a click release that
+      # changed the behaviour underneath it, which is the whole risk there.
+      - name: Install the CLI and pytest
+        # Same pytest constraint the other two gates pin, so all three resolve
+        # the same one. Bounded below the next major because a breaking release
+        # would redden every PR in the repo rather than just this job.
+        run: |
+          python -m pip install --disable-pip-version-check --quiet 'pytest>=9.1.1,<10.0'
+          python -m pip install --disable-pip-version-check --quiet ./tools/memclawctl  # legacy-name-ok: the path of the shipped CLI, which is floor
+
+      - name: Both spellings are read, and blank never wins
+        run: python -m pytest tests/test_env_dual_read.py -q
+
+      # This repo runs no general test job, so the CLI's own suite has never had
+      # one. Phase 5.3 edits cli.py and support.py, which makes that gap load
+      # bearing for the first time: without this step a later change to either
+      # file has nothing checking it. Scoped to the two directories 5.3 touches
+      # rather than turned into a repo-wide CI job, which is a separate decision.
+      - name: The CLI's own tests
+        run: python -m pytest tools/memclawctl/tests -q  # legacy-name-ok: the path of the shipped CLI, which is floor
