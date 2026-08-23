@@ -1,0 +1,69 @@
+name: Do-not-touch sentinel
+
+# The other half of hard rule 4, and the half this repo was missing.
+#
+# legacy-name-ratchet.yml holds the old-brand count flat: it fails a file whose
+# count goes UP. That is directional, so a sweep which DELETES a load-bearing
+# string makes the count go DOWN and the ratchet reports it as progress. Both
+# gates are needed and neither subsumes the other -- the ratchet answers "did
+# this mint a new name?", this one answers "did this remove one something
+# already depends on?".
+#
+# The stakes are higher here than in the OSS tree for two reasons that have
+# nothing to do with symmetry. First, the failure lands on hardware we do not
+# administer: not a bad deploy caught by us, but a customer's stack that will
+# not start, found by them, and for the air-gapped image names with no network
+# to fix it over. Second, for the cross-repo contracts -- the licence path read
+# by images built elsewhere, the bundle manifest parsed by the support backend
+# -- this list is the only place the coupling is written down at all. Nothing in
+# this repo fails when those are renamed, so nothing but a list can catch it.
+#
+# Deliberately carries no literal occurrence of the old name itself, so the gate
+# never has to grant its own definition an exemption.
+#
+# scripts/do_not_touch_sentinel.py and its tests are copied from caura-ai/caura,
+# with two intended differences: the SENTINELS table, which is necessarily
+# per-repo, and the module docstring that explains it. Everything else is
+# byte-for-byte, on the same reasoning as the ratchet -- the diff stays small
+# and readable, so drift is something to spot rather than two implementations to
+# reconcile.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  sentinel:
+    name: Do-not-touch sentinel
+    runs-on: ubuntu-latest
+    # Seconds of work, and unlike the ratchet there is no fetch to hang on: this
+    # is not a comparison against a base, so the checkout alone answers it.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.13"
+
+      # The gate's own tests run before the gate does, same as the ratchet and
+      # for a sharper reason. A sentinel row that names a string its file does
+      # not contain, or one that survives its own removal, reports "all strings
+      # survive" while protecting nothing -- and reads as coverage in the diff.
+      # The parameterised test removes each string and asserts the gate fails,
+      # so a dead row cannot be added quietly.
+      - name: The gate's own tests
+        # Same constraint the ratchet job pins, so both copies resolve the same
+        # pytest. Bounded below the next major because a breaking release here
+        # would redden every PR in the repo, not just this gate's own.
+        run: |
+          python -m pip install --disable-pip-version-check --quiet 'pytest>=9.1.1,<10.0'
+          python -m pytest tests/test_do_not_touch_sentinel.py -q
+
+      - name: Load-bearing strings survive
+        run: python scripts/do_not_touch_sentinel.py
