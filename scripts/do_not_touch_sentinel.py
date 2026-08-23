@@ -13,43 +13,15 @@ answers "did this change mint a new old-brand name?"; this one answers "did this
 change remove a name something already depends on?" A rename wave trips the
 first, a prose sweep trips the second, and Phase 7 is a prose sweep.
 
-**Why this repo needs it more than the OSS one does.** Two reasons, neither
-about tidiness:
-
-*The failure lands where we cannot reach it.* In OSS a broken floor string is a
-bad deploy, caught by us, fixed by us. Here it is a customer's stack that will
-not start, on hardware we do not administer, discovered by them. For the
-air-gapped names there is not even a network to fix it over.
-
-*For the cross-repo contracts this list is the only place the coupling is
-written down at all.* ``LICENSE_FILE`` is consumed by images built in another
-repo; the bundle manifest's collector field is parsed by the support backend.
-Nothing in this repo fails when either is renamed, and nobody on the other side
-is grepping for it. There is no test that can catch those, here or there — only a list.
-
-The riskiest entries are the Postgres defaults, and the risk is *partial*
-application rather than total. Nothing else names the database — ``install.sh``
-writes both keys to ``.env`` blank, so the shell default in the compose files is
-what every container resolves — and ``backup.sh``, ``restore.sh`` and ``upgrade.sh``
-each repeat it independently. Flip the compose files and miss ``restore.sh`` and
-the restore silently targets a database that does not exist, discovered during
-an incident. They are pinned per file for exactly that reason.
-
-**On pinning expressions rather than names.** Several entries pin a surrounding
-expression — the whole ``pg_isready`` invocation rather than the bare default,
-the ``image:`` key with its value rather than the registry prefix. That is not
-verbosity. The bare forms also appear in comments and prose here, so an entry
-pinned that way passes a tree where the functional line is gone and only the
-commentary survives — the same false pass this gate exists to prevent, inverted.
-It matters most in YAML, which has no comment/code distinction a checker can
-lean on and where the healthcheck value lives inside a ``CMD-SHELL`` list. The
-accompanying test refuses any entry whose text appears on a comment-only line.
-
-**The LOG_MESSAGE kind is unused here today.** It is retained rather than
-stripped so this file stays diffable against the OSS copy, whose mechanism is
-identical and where the kind guards three phrases a production monitor matches
-on. The class can arise here — the support backend parses what these tools emit
-— and when it does the machinery is already present and tested.
+**The strings here are not all old-brand strings, and that is the point.** The
+three embedding phrases carry no brand at all — they are ordinary English that a
+production Datadog monitor matches on as a regex substring
+(``terraform/datadog-gcp/gcp_alerts.tf:40`` in caura-enterprise, a CRITICAL
+policy that has run since 2026-07-27). Reword one in a tidy-up — or merely
+downgrade the level it is logged at — and the alert stops firing with nothing to
+fail: no test breaks, no count moves, and the only symptom is an alert that never
+arrives. No brand-based gate can ever see that, which is why the list is a list
+rather than a pattern.
 
 Usage::
 
@@ -72,12 +44,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LITERAL = "literal"
 
 # A substring of a string literal passed to a logging call, checked through the
-# AST rather than the file text. Unused in this repo's list today — see the
-# module docstring — and kept because the mechanism is shared with the OSS copy,
-# where the embedding service discusses its alert phrases in its own comments as
-# well as emitting them: there, a text search passes on a tree where the
-# ``logger.error`` call is gone and only the prose survives, which is precisely
-# the tree that kills the alert. Only an emitted message can match a log filter.
+# AST rather than the file text. The distinction matters here and nowhere else:
+# ``_service.py`` discusses these phrases in its own comments as well as emitting
+# them, so a text search passes on a tree where the ``logger.error`` call is gone
+# and only the prose about it survives — which is precisely the tree that kills
+# the alert. Only an emitted message can match a log filter.
 LOG_MESSAGE = "log_message"
 
 # Severity order, because a LOG_MESSAGE entry pins a floor as well as a phrase.
@@ -94,11 +65,11 @@ _LEVEL_RANK["warn"] = _LEVEL_RANK["warning"]
 _LEVEL_RANK["exception"] = _LEVEL_RANK["error"]
 
 # ``logger.log(level, msg)`` names its level in an argument rather than in the
-# method, and a call of that shape can pick it with a conditional — the OSS tree
-# has one that does. There is no static answer for that, so it counts as an
-# emitter of the phrase but can never satisfy a level floor: unverifiable is
-# reported, not assumed. A message something outside the repo depends on should
-# be emitted through an explicit level method anyway, and this is what says so.
+# method, and the one call in this repo picks it with a conditional. There is no
+# static answer for that shape, so it counts as an emitter of the phrase but can
+# never satisfy a level floor: unverifiable is reported, not assumed. A message a
+# monitor depends on should be emitted through an explicit level method anyway,
+# and this is what says so.
 _LOG_METHODS = frozenset(_LEVEL_RANK) | {"log"}
 
 
@@ -357,8 +328,14 @@ def _log_calls(source: str, path: str) -> list[tuple[str | None, str]]:
         ):
             continue
         level = node.func.attr if node.func.attr in _LEVEL_RANK else None
-        for arg in node.args:
-            text = _static_text(arg)
+        # The message is the first positional argument — except for
+        # ``logger.log(level, msg)``, where the level takes that slot. Reading
+        # every argument instead would let a %-substitution VALUE satisfy the
+        # check for a call whose message text had changed, which is the exact
+        # false pass this kind exists to prevent.
+        index = 1 if node.func.attr == "log" else 0
+        if len(node.args) > index:
+            text = _static_text(node.args[index])
             if text:
                 out.append((level, text))
     return out
@@ -429,7 +406,14 @@ def main() -> int:
         return 1
 
     root = Path(args.root).resolve()
-    failures = [(s, why) for s in SENTINELS if (why := _check(s, root)) is not None]
+    try:
+        failures = [(s, why) for s in SENTINELS if (why := _check(s, root)) is not None]
+    except RuntimeError as exc:
+        # A file this gate cannot read is a gate that did not run, which is not
+        # the same as a gate that found something — and a traceback reads as
+        # neither. Exit 2 says it could not run; exit 1 always means it ran.
+        print(exc, file=sys.stderr)
+        return 2
 
     if not failures:
         print(f"All {len(SENTINELS)} protected strings survive.")
