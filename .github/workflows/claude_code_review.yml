@@ -1,0 +1,357 @@
+# Claude Code Review
+#
+# A LOCAL COPY, NOT THE ORG'S SHARED PIPELINE, and not by preference. The shared
+# pipeline lives in caura-ai/.github, which is PRIVATE, and GitHub allows a
+# reusable workflow in a private repository to be used only by private
+# repositories. This repo is public. The failure mode when that rule is broken is
+# nasty and easy to misread: the run dies instantly with "This run likely failed
+# because of a workflow file issue", creates zero jobs and writes no logs, so it
+# looks like malformed YAML rather than a refusal. caura-ai/caura hit exactly
+# that in its #733 and reverted to a local copy for the same reason.
+#
+# So this is ported from caura-ai/caura's copy and must be kept in step with it
+# deliberately. Three things are intentionally DIFFERENT here, each because this
+# repo is different, not because the port was partial:
+#
+#   1. The source filter is far narrower — see condition 6.
+#   2. There is no claude-capture job and no learned-guidance recall. Both read
+#      the learned-guidance org secret, whose visibility is `private` and which
+#      a public repo therefore cannot read. Carrying them would be permanently dead code AND
+#      would introduce an old-brand identifier into a repo whose legacy-name
+#      ratchet would then fail this very PR.
+#   3. The prompts describe an installer, not a service.
+#
+# ANTHROPIC_API_KEY is an org secret with `all` visibility, so it resolves here
+# with no repo-level secret to add.
+#
+# TWO ENTRY POINTS, AND THEY DO NOT SHARE GATES:
+#
+#   pull_request  -> pre-checks -> claude-review
+#   issue_comment -> claude-retrigger          (pre-checks never runs)
+#
+# `pre-checks` is gated on `github.event_name == 'pull_request'`, and
+# `claude-retrigger` has no `needs: pre-checks`. Every condition pre-checks owns
+# is therefore absent from the comment path: author org membership, the
+# synchronize skip, the draft skip, the bot skip, MAX_FILES, and the source
+# filter. Consequences worth knowing: a DRAFT PR gets no review on open, but
+# commenting "@claude" on it produces one; and the MAX_FILES cap is bypassed on
+# the comment path, which is a deliberate escape hatch for a large but genuinely
+# reviewable change.
+#
+# OPERATIONAL REQUIREMENT: a member whose caura-ai org membership is PRIVATE is
+# skipped exactly like a stranger — silently, behind a green check. The runtime
+# check hits `orgs/caura-ai/members/{user}`, which answers for its caller, and
+# GITHUB_TOKEN sees only public members (204 public, 404 for private members and
+# non-members alike). Set membership to Public to be reviewed.
+
+name: Claude Code Review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+env:
+  EXTRA_PROMPT: >-
+    This is the PUBLIC on-prem installer that customers run on their own
+    hardware: a bash installer (install.sh / upgrade.sh / airgap-load.sh), the
+    docker-compose files that define the deployed stack, nginx config templates,
+    and a small Python operator CLI under tools/. There is no application code
+    here — the compose files, the shell scripts and the nginx templates ARE the
+    product. Weight the review accordingly: a wrong default, a broken upgrade
+    path, an unquoted variable, a missing `set -e`, or a compose change that
+    silently drops a volume or a healthcheck reaches customer machines we do not
+    administer and cannot hotfix. Several strings are load-bearing contracts
+    rather than cosmetics — on-disk paths under /opt, air-gapped image names the
+    customer already holds in a tarball, and the environment-variable family
+    operators hand-edit in install.conf.
+  REVIEW_PROMPT: |
+    Review this PR for real issues only — not style preferences.
+
+    Weight these highest, in this order:
+      1. Anything that breaks an EXISTING install on upgrade — changed defaults,
+         renamed env vars, moved paths, altered volume or image names.
+      2. Shell correctness: unquoted expansions, missing `set -euo pipefail`,
+         unchecked `cd`, commands whose failure is swallowed by a pipe.
+      3. Compose/nginx correctness: dropped healthchecks, volumes, depends_on,
+         or a service that silently stops being reachable.
+      4. Anything that only fails on the air-gapped path, which cannot be
+         fixed over the network after the fact.
+
+    ## Format
+
+    For each issue:
+
+    ### Issue Title
+    **Severity**: Critical/High/Medium/Low
+    **File**: `path/to/file:line-range`
+    **Problem**: One sentence.
+
+    <details>
+    <summary>🤖 Claude Code Prompt</summary>
+
+    ```
+    [Self-contained prompt with exact file paths, line numbers, what to change and why]
+    ```
+
+    </details>
+
+    ---
+
+    ## Sections
+    1. **Summary**: 2-3 sentences
+    2. **Critical/High Issues**: Must fix before merge
+    3. **Medium/Low Issues**: Should fix, not blocking
+    4. **Suggestions**: Nice-to-have
+    Skip empty sections.
+
+    Every prompt above is self-contained, so do not repeat them in a combined "fix all" block at the
+    end. One prompt per issue, once. Output nothing after the last issue.
+
+    Everything inside a prompt block is text for a person or an agent to READ. Never emit tool calls,
+    function-call syntax, or JSON arrays of edit operations. Describe the change in words and name
+    the file and lines; do not write code that performs it.
+
+jobs:
+  pre-checks:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - name: Evaluate skip conditions
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAX_FILES: "30"
+          PR_ACTION: ${{ github.event.action }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_ACTOR: ${{ github.actor }}
+          ORG: caura-ai
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          REPO=${{ github.repository }}
+
+          # 1. Org membership. Checked at runtime rather than via the payload's
+          # `author_association`, which reports CONTRIBUTOR for a private org
+          # member on a pull_request event and so cannot be told apart from any
+          # past contributor — unusable as a gate on a public repo. 404 is
+          # "not a public member"; anything else is a transient failure and is
+          # logged as a warning so it can be told apart from a real refusal.
+          MEMBERSHIP_STATUS=$(gh api "orgs/${ORG}/members/${PR_ACTOR}" \
+            -i 2>&1 | grep -m1 -E '^HTTP/' | awk '{print $2}')
+          if [[ "$MEMBERSHIP_STATUS" == "204" ]]; then
+            : # member — proceed
+          elif [[ "$MEMBERSHIP_STATUS" == "404" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "reason=PR author '${PR_ACTOR}' is not a public member of the '${ORG}' org" >> "$GITHUB_OUTPUT"
+            exit 0
+          else
+            echo "::warning::Org membership API returned HTTP ${MEMBERSHIP_STATUS:-?} for '${PR_ACTOR}' — skipping review as a precaution"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Org membership API returned unexpected status ${MEMBERSHIP_STATUS:-?} for '${PR_ACTOR}'" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 2. Skip pushes to an open PR — comment @claude to re-review.
+          # notify=false because this is the one skip that repeats: it fires on
+          # every push to every open PR, and would otherwise stack a comment per
+          # push.
+          if [[ "$PR_ACTION" == "synchronize" ]]; then
+            {
+              echo "skip=true"
+              echo "notify=false"
+              echo "reason=push to PR branch (synchronize) — comment @claude to re-trigger"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 3. Skip draft PRs.
+          if [[ "$PR_DRAFT" == "true" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "reason=draft PR" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 4. Skip bot PRs.
+          if [[ "$PR_ACTOR" == "dependabot[bot]" || "$PR_ACTOR" == "renovate[bot]" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "reason=bot PR ($PR_ACTOR)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 5. Too many changed files. --paginate and the awk sum are both
+          # load-bearing: this endpoint returns 30 per page by default, which is
+          # exactly MAX_FILES, so unpaginated the count could never exceed the
+          # cap and the cap would enforce nothing.
+          FILE_COUNT=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq 'length' \
+            | awk '{s+=$1} END {print s+0}')
+          if [[ "$FILE_COUNT" -gt "$MAX_FILES" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "reason=PR has ${FILE_COUNT} files (limit: ${MAX_FILES})" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 6. Nothing but documentation changed.
+          #
+          # DELIBERATELY MUCH NARROWER THAN THE OSS COPY, which also treats
+          # *.yml, *.toml, Dockerfile and tests/ as non-source. Every one of
+          # those categories is the deliverable here: docker-compose*.yml IS the
+          # deployed stack, the Dockerfiles ARE the shipped images, and the
+          # installer's own tests are the only automated check on a CLI
+          # customers run. Porting the OSS filter unchanged would have skipped
+          # the review on nearly every meaningful PR in this repo — which is the
+          # same trap caura-ai/caura hit in its #872, where a workflow-only PR
+          # went unreviewed because a lone .yml counted as config.
+          #
+          # So: only documentation skips. Markdown anywhere, and everything
+          # under docs/.
+          SRC_FILES=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" \
+            --jq '[.[] | select(.filename | (startswith("docs/") or test("\\.md$")) | not)] | length' \
+            | awk '{s+=$1} END {print s+0}')
+          if [[ "$SRC_FILES" -eq 0 ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "reason=no source files to review (documentation only)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "reason=" >> "$GITHUB_OUTPUT"
+
+      # `!= 'false'` rather than `== 'true'`: every skip branch except the
+      # synchronize one leaves `notify` unset, which reads as empty and must
+      # still post.
+      - name: Log skip reason
+        if: steps.decide.outputs.skip == 'true' && steps.decide.outputs.notify != 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: |
+          echo "::notice::Skipping Claude review — $REASON"
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          REPO=${{ github.repository }}
+          gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            -f body="**Claude Code Review** — skipped: ${REASON}" 2>/dev/null || true
+
+  claude-review:
+    needs: pre-checks
+    if: >-
+      github.event_name == 'pull_request'
+      && needs.pre-checks.result == 'success'
+      && needs.pre-checks.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      # Checks out the PR merge ref, so a change to the workflow or the review
+      # script can self-test on its own PR. Fork PRs never receive secrets, and
+      # pre-checks gates the rest.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Claude CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.159 # pinned: reproducible reviews; bump deliberately
+
+      - name: Review PR diff
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXTRA_PROMPT: ${{ env.EXTRA_PROMPT }}
+          REVIEW_PROMPT: ${{ env.REVIEW_PROMPT }}
+        run: bash .github/scripts/claude_pr_review.sh
+
+  claude-retrigger:
+    # Gate at the job level so the runner never starts for a non-member's
+    # comment. The step below re-validates for defence in depth; both read the
+    # same field, so they cannot disagree.
+    if: >-
+      github.event_name == 'issue_comment'
+      && contains(github.event.comment.body, '@claude')
+      && contains(fromJSON('["MEMBER", "OWNER"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check commenter is org member
+        id: auth
+        env:
+          AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          # On an issue_comment payload this DOES resolve for a private org
+          # member, which is why the comment path works where the on-open path
+          # cannot. Do not "align" the two gates onto this field: on a
+          # pull_request payload the same person reports CONTRIBUTOR.
+          #
+          # COLLABORATOR is intentionally excluded — the policy is org members
+          # only, which is stricter than repo write access. Widen it
+          # deliberately if ever wanted; do not "fix" it as a presumed bug.
+          case "$AUTHOR_ASSOC" in
+            MEMBER|OWNER)
+              echo "authorized=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "authorized=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::@claude triggered by ${COMMENTER} (author_association: ${AUTHOR_ASSOC}) — skipping, org membership required"
+              ;;
+          esac
+
+      - name: Get PR details
+        if: steps.auth.outputs.authorized == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=${{ github.event.issue.number }}
+          REPO=${{ github.repository }}
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.number' >/dev/null 2>&1 || {
+            echo "Not a PR comment, skipping"
+            echo "is_pr=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          echo "is_pr=true" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      # Checks out the BASE repo, deliberately NOT the PR head. This job runs on
+      # issue_comment, which (unlike a fork pull_request) DOES receive secrets,
+      # so running fork code here would hand them over. The review script comes
+      # from trusted base code and pulls the diff through the API instead.
+      - name: Checkout base repo (trusted review script)
+        if: steps.auth.outputs.authorized == 'true' && steps.pr.outputs.is_pr == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Claude CLI
+        if: steps.auth.outputs.authorized == 'true' && steps.pr.outputs.is_pr == 'true'
+        run: npm install -g @anthropic-ai/claude-code@2.1.159 # pinned: keep in step with the review job
+
+      - name: Review PR diff
+        if: steps.auth.outputs.authorized == 'true' && steps.pr.outputs.is_pr == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          EXTRA_PROMPT: ${{ env.EXTRA_PROMPT }}
+          REVIEW_PROMPT: ${{ env.REVIEW_PROMPT }}
+        run: bash .github/scripts/claude_pr_review.sh
