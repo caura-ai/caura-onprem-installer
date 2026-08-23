@@ -463,7 +463,7 @@ def _report_new_exemptions(
     # visible instead of burying it on line forty.
     by_reason: dict[str, list[tuple[str, str, str]]] = {}
     shown_total = 0
-    unfiltered = False
+    unfiltered: list[str] = []
     for path in sorted(added):
         here = [
             (lineno, text.strip())
@@ -478,11 +478,20 @@ def _report_new_exemptions(
         touched = _added_lines(base, path)
         picked = [(n, t) for n, t in here if int(n) in touched]
         if not picked:
-            # Diff unreadable. Falling back to every exempt line in the file
-            # rather than to silence, on the same trade as below: too many lines
-            # is a nuisance and none is a dead end. Said out loud, though,
-            # because unlike below this report puts a number on its own list.
-            picked, unfiltered = here, True
+            # Falling back to every exempt line in the file rather than to
+            # silence, on the same trade as below: too many lines is a nuisance
+            # and none is a dead end. Named out loud, though, because unlike
+            # below this report puts a number on its own list.
+            #
+            # Reported as what was observed, not as a cause. An unreadable diff
+            # is the likely one — ``_added_lines`` returns empty on any git
+            # failure — but a diff that read fine and simply did not intersect
+            # this file's exempt lines lands here identically, and nothing at
+            # this point can tell the two apart. Naming the cause would be a
+            # guess printed as a finding, which is the habit this whole report
+            # exists to discourage.
+            picked = here
+            unfiltered.append(path)
         shown_total += len(picked)
         for lineno, stripped in picked:
             match = EXEMPT_RE.search(stripped)
@@ -497,7 +506,13 @@ def _report_new_exemptions(
     print("check each is a compat alias, a redirect or a pinned wire format, and not")
     print("headroom for a new name:")
     if unfiltered:
-        print("  (a diff could not be read — those files list every exempt line held)")
+        named = ", ".join(unfiltered[:4]) + (
+            f" (+{len(unfiltered) - 4} more)" if len(unfiltered) > 4 else ""
+        )
+        print(
+            f"  (no diff line matched in {len(unfiltered)} file(s): {named} — every "
+            "exempt line they hold is listed, so some may predate this change)"
+        )
 
     for reason, lines in sorted(by_reason.items(), key=lambda kv: (-len(kv[1]), kv[0])):
         if len(lines) <= _EXEMPTION_GROUP_AT:
