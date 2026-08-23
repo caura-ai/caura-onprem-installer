@@ -6,9 +6,11 @@ something outside this repo depends on — the direction the ratchet reads as
 progress.
 
 The tests below come in two halves. The first builds synthetic files and checks
-the mechanism. The second is pointed at the real list and asserts that every
-entry in it actually bites: an entry whose string cannot be removed is a line of
-list that looks like protection and is not.
+the mechanism, which is copied byte-for-byte from caura-ai/caura along with the
+script; keeping these cases identical is what makes the two copies diffable. The
+second is pointed at this repo's own list and asserts that every entry in it
+actually bites: an entry whose string cannot be removed is a line of list that
+looks like protection and is not.
 """
 
 from __future__ import annotations
@@ -233,6 +235,19 @@ def test_a_file_that_does_not_parse_fails_loudly(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="does not parse"):
         _check(Sentinel("a.py", "Widget degraded", LOG_MESSAGE, "x"), root)
+
+
+def test_an_unknown_kind_refuses_to_run(tmp_path: Path) -> None:
+    """A mistyped kind must not fall through to the log-message path.
+
+    It would quietly run the wrong check on an entry whose author believed they
+    had written a literal one — and pass or fail for reasons unrelated to what
+    they pinned. A gate running the wrong check is worse than one that refuses.
+    """
+    root = _root(tmp_path, "a.py", 'KEY = "keep-me"\n')
+
+    with pytest.raises(RuntimeError, match="unknown kind"):
+        _check(Sentinel("a.py", "keep-me", "litteral", "x"), root)
 
 
 # ── the real list ────────────────────────────────────────────────────────────

@@ -13,15 +13,43 @@ answers "did this change mint a new old-brand name?"; this one answers "did this
 change remove a name something already depends on?" A rename wave trips the
 first, a prose sweep trips the second, and Phase 7 is a prose sweep.
 
-**The strings here are not all old-brand strings, and that is the point.** The
-three embedding phrases carry no brand at all — they are ordinary English that a
-production Datadog monitor matches on as a regex substring
-(``terraform/datadog-gcp/gcp_alerts.tf:40`` in caura-enterprise, a CRITICAL
-policy that has run since 2026-07-27). Reword one in a tidy-up — or merely
-downgrade the level it is logged at — and the alert stops firing with nothing to
-fail: no test breaks, no count moves, and the only symptom is an alert that never
-arrives. No brand-based gate can ever see that, which is why the list is a list
-rather than a pattern.
+**Why this repo needs it more than the OSS one does.** Two reasons, neither
+about tidiness:
+
+*The failure lands where we cannot reach it.* In OSS a broken floor string is a
+bad deploy, caught by us, fixed by us. Here it is a customer's stack that will
+not start, on hardware we do not administer, discovered by them. For the
+air-gapped names there is not even a network to fix it over.
+
+*For the cross-repo contracts this list is the only place the coupling is
+written down at all.* ``LICENSE_FILE`` is consumed by images built in another
+repo; the bundle manifest's collector field is parsed by the support backend.
+Nothing in this repo fails when either is renamed, and nobody on the other side
+is grepping for it. There is no test that can catch those, here or there — only a list.
+
+The riskiest entries are the Postgres defaults, and the risk is *partial*
+application rather than total. Nothing else names the database — ``install.sh``
+writes both keys to ``.env`` blank, so the shell default in the compose files is
+what every container resolves — and ``backup.sh``, ``restore.sh`` and ``upgrade.sh``
+each repeat it independently. Flip the compose files and miss ``restore.sh`` and
+the restore silently targets a database that does not exist, discovered during
+an incident. They are pinned per file for exactly that reason.
+
+**On pinning expressions rather than names.** Several entries pin a surrounding
+expression — the whole ``pg_isready`` invocation rather than the bare default,
+the ``image:`` key with its value rather than the registry prefix. That is not
+verbosity. The bare forms also appear in comments and prose here, so an entry
+pinned that way passes a tree where the functional line is gone and only the
+commentary survives — the same false pass this gate exists to prevent, inverted.
+It matters most in YAML, which has no comment/code distinction a checker can
+lean on and where the healthcheck value lives inside a ``CMD-SHELL`` list. The
+accompanying test refuses any entry whose text appears on a comment-only line.
+
+**The LOG_MESSAGE kind is unused here today.** It is retained rather than
+stripped so this file stays diffable against the OSS copy, whose mechanism is
+identical and where the kind guards three phrases a production monitor matches
+on. The class can arise here — the support backend parses what these tools emit
+— and when it does the machinery is already present and tested.
 
 Usage::
 
@@ -85,11 +113,12 @@ class Sentinel:
 
 # ── the list ─────────────────────────────────────────────────────────────────
 #
-# Every entry carries ``legacy-name-ok`` because this file is itself scanned by
-# the ratchet, and the reason is the same one every time: the line exists to pin
-# a string rule 3 keeps readable forever. Excluding the file from the ratchet
-# instead would leave a hole in that scan, which is the trade its author already
-# refused once for the same reason.
+# Entries whose pinned text contains the old brand carry ``legacy-name-ok``,
+# because this file is itself scanned by the ratchet, and the reason is the same
+# every time: the line exists to pin a string rule 3 keeps readable forever.
+# Entries pinning brand-free text need no marker and correctly have none — the
+# ratchet never sees them. Excluding this file from the ratchet instead would
+# leave a hole in that scan, which is the trade its author already refused once.
 
 SENTINELS: tuple[Sentinel, ...] = (
     # -- The Postgres defaults. The highest-blast-radius strings in the repo. ---
@@ -309,9 +338,11 @@ def _static_text(node: ast.expr) -> str | None:
 def _log_calls(source: str, path: str) -> list[tuple[str | None, str]]:
     """``(level, message)`` for every logging call — level ``None`` if unknowable.
 
-    Positional args only, and every one of them: ``logger.log`` takes the level
-    first, so keying on argument position would miss the message while keying on
-    "any string argument" costs nothing.
+    One argument per call, by position: index 0, or index 1 for ``logger.log``
+    where the level takes the first slot. Reading every positional argument
+    instead — which this did until a %-substitution value was found able to
+    satisfy a check for a message that had been renamed — is the wider net that
+    catches the wrong fish.
     """
     try:
         tree = ast.parse(source)
@@ -354,6 +385,13 @@ def _check(sentinel: Sentinel, root: Path) -> str | None:
 
     if sentinel.kind == LITERAL:
         return None if sentinel.text in source else "the string is gone"
+
+    if sentinel.kind != LOG_MESSAGE:
+        # Not defensive padding: a mistyped kind would otherwise fall through to
+        # the log-message path and quietly check the wrong thing, on an entry
+        # whose author believed they had written a literal one. A gate running
+        # the wrong check is worse than one that refuses to run.
+        raise RuntimeError(f"unknown kind {sentinel.kind!r} on {sentinel.path}")
 
     emitting = [
         (level, text)
