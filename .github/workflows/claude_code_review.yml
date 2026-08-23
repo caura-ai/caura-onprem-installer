@@ -33,10 +33,10 @@
 # `claude-retrigger` has no `needs: pre-checks`. Every condition pre-checks owns
 # is therefore absent from the comment path: author org membership, the
 # synchronize skip, the draft skip, the bot skip, MAX_FILES, and the source
-# filter. Consequences worth knowing: a DRAFT PR gets no review on open, but
-# commenting "@claude" on it produces one; and the MAX_FILES cap is bypassed on
-# the comment path, which is a deliberate escape hatch for a large but genuinely
-# reviewable change.
+# filter. Consequences worth knowing: a DRAFT PR gets no review on open — it is
+# reviewed when it is marked ready, and commenting "@claude" on it produces one
+# sooner; and the MAX_FILES cap is bypassed on the comment path, which is a
+# deliberate escape hatch for a large but genuinely reviewable change.
 #
 # OPERATIONAL REQUIREMENT: a member whose caura-ai org membership is PRIVATE is
 # skipped exactly like a stranger — silently, behind a green check. The runtime
@@ -49,7 +49,13 @@ name: Claude Code Review
 on:
   pull_request:
     branches: [main]
-    types: [opened, reopened, synchronize]
+    # `ready_for_review` is what reviews a draft once it is promoted. Without it a
+    # PR opened as a draft is skipped on `opened` by design, fires nothing on the
+    # promotion, and then fires `synchronize` on the next push — which is skipped
+    # deliberately. The net effect is that a draft-first PR is never reviewed
+    # automatically at all. The draft skip below still holds while it IS a draft;
+    # on promotion `pull_request.draft` is already false, so pre-checks proceeds.
+    types: [opened, reopened, synchronize, ready_for_review]
   issue_comment:
     types: [created]
 
