@@ -17,7 +17,7 @@ services:
     # must have EITHER the embedder image loaded locally (install.sh picks
     # it up via airgap-load.sh) OR the slim core-api image AND an LLM key
     # in .env — never both required.
-    image: "ghcr.io/caura-ai/memclaw-core-api-embedder:${MEMCLAW_VERSION:-latest}"
+    image: "ghcr.io/caura-ai/memclaw-core-api-embedder:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     environment:
       # Pin the provider so the LocalEmbedding path is taken; override any
       # customer .env that might set this to "fake" or blank.

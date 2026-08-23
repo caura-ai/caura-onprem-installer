@@ -19,9 +19,33 @@ from memclawctl.support import register as _register_support
 
 console = Console()
 
-DEFAULT_URL = os.environ.get("MEMCLAW_URL", "http://localhost")
-DEFAULT_ADMIN_KEY = os.environ.get("MEMCLAW_ADMIN_KEY", "")
-DEFAULT_HOME = Path(os.environ.get("MEMCLAW_HOME", "/opt/memclaw"))
+# Each of these reads both spellings, new name first, and takes the first
+# NON-EMPTY one — which is what ``or`` gives, since "" is falsy. Never nest the
+# old lookup as the *default argument* of the new one: that resolves to the
+# first name which is merely defined, and an exported-but-blank new name would
+# beat a working old-name value. These names reach operators through .env and
+# install.conf templates, so "present and blank" is the ordinary half-migrated
+# state rather than an exotic one.
+#
+# DEFAULT_ADMIN_KEY is where that distinction has teeth. ``_client`` below
+# attaches an Authorization header only ``if admin_key`` — an empty key is not
+# an error, it silently sends the request unauthenticated. So blank here means
+# "drop the credential", not "refuse", which puts it firmly on the
+# first-non-empty side.
+DEFAULT_URL = os.environ.get("CAURA_URL") or os.environ.get(
+    "MEMCLAW_URL", "http://localhost"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+)
+DEFAULT_ADMIN_KEY = os.environ.get("CAURA_ADMIN_KEY") or os.environ.get(
+    "MEMCLAW_ADMIN_KEY", ""  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+)
+# The install root's old-name lookup is pinned verbatim by
+# scripts/do_not_touch_sentinel.py — nothing on disk records where a customer
+# installed, so this default IS the record. It is left character-for-character
+# intact and the new name is layered in front of it.
+DEFAULT_HOME = Path(
+    os.environ.get("CAURA_HOME")
+    or os.environ.get("MEMCLAW_HOME", "/opt/memclaw")  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+)
 
 
 def _client(url: str, admin_key: str | None) -> httpx.Client:
@@ -38,7 +62,7 @@ def _client(url: str, admin_key: str | None) -> httpx.Client:
 @click.option(
     "--admin-key",
     default=DEFAULT_ADMIN_KEY,
-    help="Admin JWT; can also come from MEMCLAW_ADMIN_KEY.",
+    help="Admin JWT; can also come from CAURA_ADMIN_KEY (or MEMCLAW_ADMIN_KEY).",  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 )
 @click.pass_context
 def cli(ctx: click.Context, url: str, admin_key: str) -> None:
@@ -310,9 +334,14 @@ def memory_group() -> None:
 @click.argument("tenant_id")
 @click.option(
     "--api-key",
-    envvar="MEMCLAW_API_KEY",
+    # A list, not a string: click resolves it to the first envvar with a
+    # non-empty value (``if rv:``), so a blank CAURA_API_KEY falls through to a
+    # working old-name value rather than resolving to "" and tripping
+    # ``required``. Pinned by test_env_dual_read.py, because that is a library
+    # behaviour rather than one this file implements.
+    envvar=["CAURA_API_KEY", "MEMCLAW_API_KEY"],  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     required=True,
-    help="Per-tenant API key (mc_...). Env: MEMCLAW_API_KEY.",
+    help="Per-tenant API key (mc_...). Env: CAURA_API_KEY (or MEMCLAW_API_KEY).",  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 )
 @click.option(
     "--out", default=None, help="Output file. Default: stdout (JSONL, one row per line)."
@@ -361,9 +390,14 @@ def memory_export(
 @click.argument("tenant_id")
 @click.option(
     "--api-key",
-    envvar="MEMCLAW_API_KEY",
+    # A list, not a string: click resolves it to the first envvar with a
+    # non-empty value (``if rv:``), so a blank CAURA_API_KEY falls through to a
+    # working old-name value rather than resolving to "" and tripping
+    # ``required``. Pinned by test_env_dual_read.py, because that is a library
+    # behaviour rather than one this file implements.
+    envvar=["CAURA_API_KEY", "MEMCLAW_API_KEY"],  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     required=True,
-    help="Per-tenant API key (mc_...). Env: MEMCLAW_API_KEY.",
+    help="Per-tenant API key (mc_...). Env: CAURA_API_KEY (or MEMCLAW_API_KEY).",  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 )
 @click.option(
     "--file",

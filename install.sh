@@ -22,35 +22,76 @@ set -euo pipefail
 VERSION="1.0.0"
 
 # ── Defaults ────────────────────────────────────────────────────────────────
+#
+# Every knob below is read under both spellings: the historical one resolves
+# first, exactly as it always has, and the CAURA_* name then overrides it WHEN
+# IT IS NON-EMPTY. Old names keep working forever (rule 3); nothing here is
+# renamed.
+#
+# FIRST NON-EMPTY, NEVER FIRST DEFINED — and the difference is the whole point.
+# These names land in install.conf and .env, files a customer hand-edits, so the
+# ordinary half-migrated state is a new name PRESENT AND BLANK beside an old one
+# that still holds the value. A first-defined resolution reads that blank as an
+# answer; `:-` treats it as absent and falls through, which is the only correct
+# reading of a template somebody has started filling in. Several consumers below
+# treat an empty value as "skip this" rather than "refuse" — see the notes at
+# the embedding-provider auto-flip and the bundle-dir probe — so resolving to ""
+# would silently disable a check rather than fail loudly.
+#
+# Both spellings are written out in full at every site rather than built from a
+# shared suffix: the old names have to stay greppable, because grepping for them
+# is how this migration is tracked.
 MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"
+MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 CONFIG_FILE=""
 NON_INTERACTIVE="false"
 OFFLINE="${MEMCLAW_OFFLINE:-false}"
+OFFLINE="${CAURA_OFFLINE:-$OFFLINE}"
 SKIP_ADMIN="${MEMCLAW_SKIP_ADMIN:-false}"
+SKIP_ADMIN="${CAURA_SKIP_ADMIN:-$SKIP_ADMIN}"
 
 HOSTNAME="${MEMCLAW_HOSTNAME:-}"
+HOSTNAME="${CAURA_HOSTNAME:-$HOSTNAME}"
 ADMIN_EMAIL="${MEMCLAW_ADMIN_EMAIL:-}"
+ADMIN_EMAIL="${CAURA_ADMIN_EMAIL:-$ADMIN_EMAIL}"
 ADMIN_PASSWORD="${MEMCLAW_ADMIN_PASSWORD:-}"
+ADMIN_PASSWORD="${CAURA_ADMIN_PASSWORD:-$ADMIN_PASSWORD}"
 ADMIN_PASSWORD_FILE="${MEMCLAW_ADMIN_PASSWORD_FILE:-}"
+ADMIN_PASSWORD_FILE="${CAURA_ADMIN_PASSWORD_FILE:-$ADMIN_PASSWORD_FILE}"
 LICENSE_PATH="${MEMCLAW_LICENSE:-}"
+LICENSE_PATH="${CAURA_LICENSE:-$LICENSE_PATH}"
 LICENSE_URL="${MEMCLAW_LICENSE_URL:-}"
+LICENSE_URL="${CAURA_LICENSE_URL:-$LICENSE_URL}"
 JWT_SECRET_FILE="${MEMCLAW_JWT_SECRET_FILE:-}"
+JWT_SECRET_FILE="${CAURA_JWT_SECRET_FILE:-$JWT_SECRET_FILE}"
 POSTGRES_PASSWORD_FILE="${MEMCLAW_POSTGRES_PASSWORD_FILE:-}"
+POSTGRES_PASSWORD_FILE="${CAURA_POSTGRES_PASSWORD_FILE:-$POSTGRES_PASSWORD_FILE}"
 CORE_ADMIN_API_KEY_FILE="${MEMCLAW_CORE_ADMIN_API_KEY_FILE:-}"
+CORE_ADMIN_API_KEY_FILE="${CAURA_CORE_ADMIN_API_KEY_FILE:-$CORE_ADMIN_API_KEY_FILE}"
 OPENAI_API_KEY_FILE="${MEMCLAW_OPENAI_API_KEY_FILE:-}"
+OPENAI_API_KEY_FILE="${CAURA_OPENAI_API_KEY_FILE:-$OPENAI_API_KEY_FILE}"
 # External Postgres (blank = use the bundled `postgres` service). Set these
 # to point at a managed/external instance (RDS, Cloud SQL, AlloyDB, etc.).
 # The external DB must have the pgvector extension available + a user with
 # CREATE privileges. See docs/database.md.
 POSTGRES_HOST="${MEMCLAW_POSTGRES_HOST:-}"
+POSTGRES_HOST="${CAURA_POSTGRES_HOST:-$POSTGRES_HOST}"
 POSTGRES_PORT="${MEMCLAW_POSTGRES_PORT:-}"
+POSTGRES_PORT="${CAURA_POSTGRES_PORT:-$POSTGRES_PORT}"
 POSTGRES_USER="${MEMCLAW_POSTGRES_USER:-}"
+POSTGRES_USER="${CAURA_POSTGRES_USER:-$POSTGRES_USER}"
 POSTGRES_DB="${MEMCLAW_POSTGRES_DB:-}"
+POSTGRES_DB="${CAURA_POSTGRES_DB:-$POSTGRES_DB}"
 POSTGRES_REQUIRE_SSL="${MEMCLAW_POSTGRES_REQUIRE_SSL:-}"
+POSTGRES_REQUIRE_SSL="${CAURA_POSTGRES_REQUIRE_SSL:-$POSTGRES_REQUIRE_SSL}"
 LLM_PROVIDER="${MEMCLAW_LLM_PROVIDER:-}"
+LLM_PROVIDER="${CAURA_LLM_PROVIDER:-$LLM_PROVIDER}"
 EMAIL_PROVIDER="${MEMCLAW_EMAIL_PROVIDER:-log}"
+EMAIL_PROVIDER="${CAURA_EMAIL_PROVIDER:-$EMAIL_PROVIDER}"
 EMBEDDING_PROVIDER="${MEMCLAW_EMBEDDING_PROVIDER:-local}"
+EMBEDDING_PROVIDER="${CAURA_EMBEDDING_PROVIDER:-$EMBEDDING_PROVIDER}"
 MEMCLAW_VERSION="${MEMCLAW_VERSION:-v2.8.4}"
+MEMCLAW_VERSION="${CAURA_VERSION:-$MEMCLAW_VERSION}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 
 # TLS — four modes:
 #   "self-signed" (default!) — we generate a 10y RSA-2048 cert on first
@@ -62,12 +103,19 @@ MEMCLAW_VERSION="${MEMCLAW_VERSION:-v2.8.4}"
 #   "" (empty) — HTTP-only. Only reachable by passing
 #       --acknowledge-insecure; install.sh refuses otherwise.
 TLS_MODE="${MEMCLAW_TLS_MODE:-self-signed}"
+TLS_MODE="${CAURA_TLS_MODE:-$TLS_MODE}"
 TLS_CERT_FILE="${MEMCLAW_TLS_CERT_FILE:-}"
+TLS_CERT_FILE="${CAURA_TLS_CERT_FILE:-$TLS_CERT_FILE}"
 TLS_KEY_FILE="${MEMCLAW_TLS_KEY_FILE:-}"
+TLS_KEY_FILE="${CAURA_TLS_KEY_FILE:-$TLS_KEY_FILE}"
 TLS_DOMAIN="${MEMCLAW_TLS_DOMAIN:-}"
+TLS_DOMAIN="${CAURA_TLS_DOMAIN:-$TLS_DOMAIN}"
 TLS_EMAIL="${MEMCLAW_TLS_EMAIL:-}"
+TLS_EMAIL="${CAURA_TLS_EMAIL:-$TLS_EMAIL}"
 ACK_INSECURE="${MEMCLAW_ACK_INSECURE:-false}"
+ACK_INSECURE="${CAURA_ACK_INSECURE:-$ACK_INSECURE}"
 BIND_ADDRESS="${MEMCLAW_BIND_ADDRESS:-0.0.0.0}"
+BIND_ADDRESS="${CAURA_BIND_ADDRESS:-$BIND_ADDRESS}"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 log()   { printf '\033[36m==>\033[0m %s\n' "$*"; }
@@ -126,6 +174,24 @@ if [ -n "$CONFIG_FILE" ]; then
   log "Loading $CONFIG_FILE"
   # Shell-style parser: ignores lines starting with # or empty, strips
   # surrounding quotes on values. Intentionally minimal — not a TOML parser.
+  #
+  # THE FILTER. This `case` is a whitelist: a key it does not name is dropped
+  # silently, with no warning and no error. So the two branded keys need their
+  # caura_* spellings added HERE as well as wherever the value is used — a
+  # reader added downstream alone would accept the new key everywhere and read
+  # it nowhere, and the config file would look migrated while behaving as if
+  # the line were absent.
+  #
+  # The two new keys collect into temporaries and resolve after the loop rather
+  # than assigning as they are seen. Two reasons, and the second is the one that
+  # matters: assigning in-loop makes the answer depend on which spelling appears
+  # LOWER in the file, and a blank `caura_home =` sitting below a filled old-name
+  # key would then win and blank the value. Resolving afterwards is
+  # order-independent and first-non-empty in both directions.
+  _conf_caura_home=""
+  _conf_memclaw_home=""  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  _conf_caura_version=""
+  _conf_memclaw_version=""  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   while IFS='=' read -r key raw; do
     key="${key// /}"; raw="${raw#"${raw%%[![:space:]]*}"}"; raw="${raw%\"}"; raw="${raw#\"}"
     case "$key" in
@@ -148,12 +214,23 @@ if [ -n "$CONFIG_FILE" ]; then
       jwt_secret_file)             JWT_SECRET_FILE="$raw" ;;
       postgres_password_file)      POSTGRES_PASSWORD_FILE="$raw" ;;
       core_admin_api_key_file)     CORE_ADMIN_API_KEY_FILE="$raw" ;;
-      memclaw_home)                MEMCLAW_HOME="$raw" ;;
-      memclaw_version)             MEMCLAW_VERSION="$raw" ;;
+      memclaw_home)                _conf_memclaw_home="$raw" ;;      # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+      caura_home)                  _conf_caura_home="$raw" ;;
+      memclaw_version)             _conf_memclaw_version="$raw" ;;   # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+      caura_version)               _conf_caura_version="$raw" ;;
       offline)                     OFFLINE="$raw" ;;
       skip_admin)                  SKIP_ADMIN="$raw" ;;
     esac
   done < "$CONFIG_FILE"
+
+  # First non-empty of the two spellings, then applied only if it is non-empty.
+  # The outer guard is what keeps a blank key from clobbering a value the
+  # environment or a CLI flag already supplied: a home key with nothing after
+  # the `=` is a half-filled template, not an instruction to install into "".
+  _conf_home="${_conf_caura_home:-$_conf_memclaw_home}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  [ -n "$_conf_home" ] && MEMCLAW_HOME="$_conf_home"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  _conf_version="${_conf_caura_version:-$_conf_memclaw_version}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  [ -n "$_conf_version" ] && MEMCLAW_VERSION="$_conf_version"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 fi
 
 # Re-export in MEMCLAW_* form so sudo -E preserves them into the child.
@@ -165,6 +242,19 @@ export MEMCLAW_OFFLINE="$OFFLINE" MEMCLAW_SKIP_ADMIN="$SKIP_ADMIN"
 export MEMCLAW_HOSTNAME="$HOSTNAME" MEMCLAW_ADMIN_EMAIL="$ADMIN_EMAIL"
 export MEMCLAW_ADMIN_PASSWORD="$ADMIN_PASSWORD" MEMCLAW_ADMIN_PASSWORD_FILE="$ADMIN_PASSWORD_FILE"
 export MEMCLAW_LICENSE="$LICENSE_PATH" MEMCLAW_LICENSE_URL="$LICENSE_URL"
+# And the same resolved values under the CAURA_* spelling, so the two agree in
+# the child. Without this the handoff silently inverts the documented
+# precedence: a CAURA_* value inherited through `sudo -E` still holds whatever
+# the caller's environment had, while its old-name twin carries the value a
+# CLI flag or the config file just resolved — and the child, reading the new
+# name first, would take the stale one. Only reachable when argv IS sanitised
+# (otherwise the child re-parses the flag and corrects itself), which is exactly
+# the case this export block exists for.
+export CAURA_HOME="$MEMCLAW_HOME" CAURA_VERSION="$MEMCLAW_VERSION"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+export CAURA_OFFLINE="$OFFLINE" CAURA_SKIP_ADMIN="$SKIP_ADMIN"
+export CAURA_HOSTNAME="$HOSTNAME" CAURA_ADMIN_EMAIL="$ADMIN_EMAIL"
+export CAURA_ADMIN_PASSWORD="$ADMIN_PASSWORD" CAURA_ADMIN_PASSWORD_FILE="$ADMIN_PASSWORD_FILE"
+export CAURA_LICENSE="$LICENSE_PATH" CAURA_LICENSE_URL="$LICENSE_URL"
 
 # ── Preflight ──────────────────────────────────────────────────────────────
 log "Preflight checks"
@@ -254,9 +344,17 @@ OPENAI_API_KEY=$(read_file "$OPENAI_API_KEY_FILE" || true)
 # sentence-transformers installed, so every write throws ImportError and
 # semantic search returns zero hits. The fatter embedder image is only
 # engaged when we're actually using local — see LOCAL_EMBEDDINGS below.
+#
+# The third test asks "did the operator pick a provider themselves?", and it has
+# to ask it of BOTH spellings concatenated. Testing only the old name would read
+# an explicit CAURA_EMBEDDING_PROVIDER=local as "unset" and overwrite the
+# operator's deliberate choice with openai — an empty value here means "skip
+# this override", never "refuse", so it is the first-non-empty case and not the
+# survivable first-defined one. Concatenation is the same idiom the
+# license/admin-password checks above use for "neither of these is set".
 if [ -n "${OPENAI_API_KEY:-}" ] \
    && [ "${EMBEDDING_PROVIDER}" = "local" ] \
-   && [ -z "${MEMCLAW_EMBEDDING_PROVIDER:-}" ]; then
+   && [ -z "${CAURA_EMBEDDING_PROVIDER:-}${MEMCLAW_EMBEDDING_PROVIDER:-}" ]; then  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   EMBEDDING_PROVIDER="openai"
   log "OPENAI_API_KEY provided; setting EMBEDDING_PROVIDER=openai (override with --embedding-provider)."
 fi
@@ -308,8 +406,16 @@ done
 #   3. Stdin mode (curl|sudo bash) or standalone file with no adjacent
 #      bundle — fetch the bundle tarball from onprem.caura.ai and extract.
 SRC_DIR=""
-if [ -n "${MEMCLAW_BUNDLE_DIR:-}" ] && [ -f "$MEMCLAW_BUNDLE_DIR/docker-compose.yml" ]; then
-  SRC_DIR="$MEMCLAW_BUNDLE_DIR"
+# Resolved to one variable first, so the -n probe and the use below cannot
+# disagree about which spelling won. An empty value here means "fall through to
+# mode 2/3" rather than "refuse", so blank must read as absent: a blank
+# CAURA_BUNDLE_DIR beside a real old-name value has to keep using the real one,
+# not quietly send an air-gapped install off to fetch a tarball it has no
+# network for.
+BUNDLE_DIR="${MEMCLAW_BUNDLE_DIR:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+BUNDLE_DIR="${CAURA_BUNDLE_DIR:-$BUNDLE_DIR}"
+if [ -n "$BUNDLE_DIR" ] && [ -f "$BUNDLE_DIR/docker-compose.yml" ]; then
+  SRC_DIR="$BUNDLE_DIR"
 elif [ -f "$0" ] && [ -r "$0" ]; then
   candidate=$(dirname "$(realpath "$0")")
   [ -f "$candidate/docker-compose.yml" ] && SRC_DIR="$candidate"
@@ -317,6 +423,7 @@ fi
 
 if [ -z "$SRC_DIR" ]; then
   BUNDLE_URL="${MEMCLAW_BUNDLE_URL:-https://onprem.caura.ai/bundle.tar.gz}"
+  BUNDLE_URL="${CAURA_BUNDLE_URL:-$BUNDLE_URL}"
   log "No adjacent bundle found; fetching $BUNDLE_URL"
   SRC_DIR=$(mktemp -d)
   curl -fsSL "$BUNDLE_URL" | tar -xz -C "$SRC_DIR" \
@@ -507,6 +614,12 @@ if [ -f "$MEMCLAW_HOME/license/license.key" ]; then
 fi
 
 # ── Write .env ──────────────────────────────────────────────────────────────
+# Resolved here rather than in the heredoc below, which is the one place the
+# two-line idiom used everywhere else cannot go: every line inside that heredoc
+# is written verbatim into the customer's .env, so a second read — or the
+# exemption comment marking one — would land in their file as text. The keys the
+# heredoc writes are unchanged; only the value this one resolves is.
+MEMCLAW_OPS_VERSION="${CAURA_OPS_VERSION:-${MEMCLAW_OPS_VERSION:-}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 cat > "$MEMCLAW_HOME/.env" <<EOF
 # Rendered by install.sh $(date -u +%Y-%m-%dT%H:%M:%SZ). Do not edit while
 # the stack is running — rerun ./install.sh to regenerate.
@@ -564,6 +677,7 @@ EOF
 # has neither an LLM key nor a PLATFORM_EMBEDDING_* override — otherwise
 # the slim core-api image 503s on every recall.
 LOCAL_EMBEDDINGS="${MEMCLAW_LOCAL_EMBEDDINGS:-}"
+LOCAL_EMBEDDINGS="${CAURA_LOCAL_EMBEDDINGS:-$LOCAL_EMBEDDINGS}"
 if [ -z "$LOCAL_EMBEDDINGS" ]; then
   if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${PLATFORM_EMBEDDING_API_KEY:-}" ] \
       && [ -z "${ANTHROPIC_API_KEY:-}" ] && [ "${EMBEDDING_PROVIDER}" = "local" ]; then

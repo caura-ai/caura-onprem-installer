@@ -43,7 +43,16 @@ from rich.console import Console
 
 console = Console()
 
-DEFAULT_HOME = Path(os.environ.get("MEMCLAW_HOME", "/opt/memclaw"))
+# Both spellings, new name first, first NON-EMPTY wins — ``or`` rather than a
+# nested default, because an exported-but-blank CAURA_HOME must fall through to
+# a working old-name value instead of resolving to "". The old expression is
+# pinned verbatim by scripts/do_not_touch_sentinel.py (nothing on disk records
+# where a customer installed, so this default is the only record) and is left
+# character-for-character intact with the new name layered in front.
+DEFAULT_HOME = Path(
+    os.environ.get("CAURA_HOME")
+    or os.environ.get("MEMCLAW_HOME", "/opt/memclaw")  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+)
 
 # Log sinks we expect to find under $MEMCLAW_HOME/logs/.  Keep in sync with
 # docker-compose.yml log bind-mounts.
@@ -583,7 +592,7 @@ def _find_member(tar: tarfile.TarFile, name: str) -> tarfile.TarInfo | None:
 
 # ── upload ─────────────────────────────────────────────────────────────────
 
-DEFAULT_SUPPORT_ENDPOINT = os.environ.get(
+DEFAULT_SUPPORT_ENDPOINT = os.environ.get("CAURA_SUPPORT_URL") or os.environ.get(
     "MEMCLAW_SUPPORT_URL", "https://support.caura.ai/api/onprem/support"
 )
 

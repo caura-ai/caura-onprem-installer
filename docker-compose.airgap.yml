@@ -6,22 +6,22 @@
 
 services:
   platform-storage-api:
-    image: "memclaw-onprem/platform-storage:${MEMCLAW_VERSION:-latest}"
+    image: "memclaw-onprem/platform-storage:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   platform-auth-api:
-    image: "memclaw-onprem/platform-auth:${MEMCLAW_VERSION:-latest}"
+    image: "memclaw-onprem/platform-auth:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   platform-admin-api:
-    image: "memclaw-onprem/platform-admin:${MEMCLAW_VERSION:-latest}"
+    image: "memclaw-onprem/platform-admin:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   platform-audit-api:
-    image: "memclaw-onprem/platform-audit:${MEMCLAW_VERSION:-latest}"
+    image: "memclaw-onprem/platform-audit:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   core-storage-api:
-    image: "memclaw-onprem/core-storage:${MEMCLAW_VERSION:-latest}"
+    image: "memclaw-onprem/core-storage:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   core-api:
     # Default = slim core-api. Overridden again by docker-compose.embedder.yml
     # to memclaw-onprem/core-api-embedder:<version> when local embeddings
     # are needed (air-gap + no OpenAI/Vertex key).
-    image: "memclaw-onprem/core-api:${MEMCLAW_VERSION:-latest}"
+    image: "memclaw-onprem/core-api:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   app-frontend:
-    image: "memclaw-onprem/app:${MEMCLAW_VERSION:-latest}"
+    image: "memclaw-onprem/app:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   # gateway image is built locally (see docker-compose.yml); override is a no-op
   gateway:
-    image: "memclaw-onprem/gateway:${MEMCLAW_VERSION:-latest}"
+    image: "memclaw-onprem/gateway:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working

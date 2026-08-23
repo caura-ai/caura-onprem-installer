@@ -12,7 +12,14 @@
 # Safe to run while the stack is live — pg_dump uses a consistent snapshot.
 set -euo pipefail
 
+# The install root, under either spelling. The old name resolves first (the
+# line below is byte-identical to what it has always been, and pinned by
+# scripts/do_not_touch_sentinel.py because a flipped default sends backups to an
+# empty directory and reports success); CAURA_HOME then overrides it when set to
+# something non-empty. Blank never wins — on this script that would mean backing
+# up "/backups" instead of the customer's install.
 MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"
+MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 BACKUP_DIR="${1:-$MEMCLAW_HOME/backups}"
 mkdir -p "$BACKUP_DIR"
 

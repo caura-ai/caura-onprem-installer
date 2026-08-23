@@ -306,6 +306,58 @@ SENTINELS: tuple[Sentinel, ...] = (
         kind=LITERAL,
         breaks="rollback cannot find the version marker, so a bad upgrade cannot be undone",
     ),
+    # -- The .env keys an already-installed stack is driven by. -----------------
+    #
+    # Added with item 5.3's dual-read, and specifically BECAUSE of it. Every .env
+    # on a customer's disk today carries only the old spelling of these keys —
+    # install.sh has always written them that way — so the old read is what makes
+    # an existing install upgradeable at all. Before 5.3 it was also the only
+    # read, which made deleting it obviously wrong; now it sits beside a CAURA_*
+    # read that looks like a replacement, and Phase 7 is a sweep whose whole job
+    # is deleting old-brand lines that look superseded. Dropping either of these
+    # would strand every install that predates the new key with nothing red.
+    #
+    # Pinned per file for the same reason the Postgres defaults are: the failure
+    # is partial application. The compose files and upgrade.sh read the version
+    # independently, so flipping compose and missing upgrade.sh leaves the two
+    # disagreeing about which tag is live — the upgrade rolls services to a tag
+    # its own rollback path cannot then find.
+    Sentinel(
+        path="upgrade.sh",
+        text="v=$(_env_key MEMCLAW_VERSION)",  # legacy-name-ok: pinned floor string
+        kind=LITERAL,
+        breaks="upgrade refuses every install whose .env predates the new version key",
+    ),
+    Sentinel(
+        path="upgrade.sh",
+        text="_TLS_MODE=$(_GET MEMCLAW_TLS_MODE)",  # legacy-name-ok: pinned floor string
+        kind=LITERAL,
+        breaks="an upgrade drops the letsencrypt overlay and silently stops serving TLS",
+    ),
+    Sentinel(
+        path="docker-compose.yml",
+        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-ok: pinned floor string
+        kind=LITERAL,
+        breaks="every existing install resolves its whole stack to :latest instead of its pinned tag",
+    ),
+    Sentinel(
+        path="docker-compose.airgap.yml",
+        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-ok: pinned floor string
+        kind=LITERAL,
+        breaks="an air-gapped stack looks for :latest images the customer's tarball does not hold",
+    ),
+    Sentinel(
+        path="docker-compose.embedder.yml",
+        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-ok: pinned floor string
+        kind=LITERAL,
+        breaks="the embedder overlay stops matching the tag the rest of the stack runs",
+    ),
+    Sentinel(
+        path="docker-compose.embedder.airgap.yml",
+        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-ok: pinned floor string
+        kind=LITERAL,
+        breaks="the offline embedder overlay stops matching the loaded image's tag",
+    ),
 )
 
 
