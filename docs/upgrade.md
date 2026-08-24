@@ -1,6 +1,6 @@
 # Upgrade guide
 
-Upgrades are **tag-driven** and fully reversible. Bump `MEMCLAW_VERSION`
+Upgrades are **tag-driven** and fully reversible. Bump `CAURA_VERSION`
 in `.env`, pull the new images, restart. Data stays in Docker named
 volumes — never touched by the upgrade.
 
@@ -36,8 +36,10 @@ cd /opt/memclaw
 # 1. Take a safety backup
 ./scripts/backup.sh
 
-# 2. Pick the target version
-sed -i 's/^MEMCLAW_VERSION=.*/MEMCLAW_VERSION=v1.1.0/' .env
+# 2. Pick the target version. This rewrites whichever spelling your .env
+#    carries. Anchoring on the new name alone would match nothing on a file
+#    written before the rename — no error, and you stay on the old tag.
+sed -i -E 's/^(CAURA|MEMCLAW)_VERSION=.*/\1_VERSION=v1.1.0/' .env  # legacy-name-ok: names both spellings so the edit works on an .env written before the rename
 
 # 3. Pull + roll
 docker compose pull
@@ -64,7 +66,7 @@ Identical flow, with two extra steps at the front:
 #      airgap overlay resolves to locally-loaded tags.
 cd /opt/memclaw
 ./scripts/backup.sh
-sed -i 's/^MEMCLAW_VERSION=.*/MEMCLAW_VERSION=v1.1.0/' .env
+sed -i -E 's/^(CAURA|MEMCLAW)_VERSION=.*/\1_VERSION=v1.1.0/' .env  # legacy-name-ok: names both spellings so the edit works on an .env written before the rename
 docker compose -f docker-compose.yml -f docker-compose.airgap.yml up -d
 ```
 
@@ -101,7 +103,7 @@ docker compose ps
 
 ```bash
 cd /opt/memclaw
-sed -i 's/^MEMCLAW_VERSION=.*/MEMCLAW_VERSION=v1.0.0/' .env   # old tag
+sed -i -E 's/^(CAURA|MEMCLAW)_VERSION=.*/\1_VERSION=v1.0.0/' .env   # old tag; legacy-name-ok: names both spellings so the edit works on an .env written before the rename
 docker compose up -d
 ```
 

@@ -7,7 +7,7 @@
 #   ./install.sh --config /etc/memclaw/install.conf --non-interactive  (silent)
 #   ./install.sh --hostname ... --admin-email ... --license ... --non-interactive
 #
-# Precedence (highest wins): CLI flags > env vars (MEMCLAW_*) > --config file
+# Precedence (highest wins): CLI flags > env vars (CAURA_*) > --config file
 # > defaults. Neither mode prompts — the one-liner auto-generates secrets
 # and hands off to /setup (web wizard or memclawctl), silent demands
 # everything upfront.
@@ -193,7 +193,23 @@ if [ -n "$CONFIG_FILE" ]; then
   _conf_caura_version=""
   _conf_memclaw_version=""  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   while IFS='=' read -r key raw; do
-    key="${key// /}"; raw="${raw#"${raw%%[![:space:]]*}"}"; raw="${raw%\"}"; raw="${raw#\"}"
+    key="${key// /}"; raw="${raw#"${raw%%[![:space:]]*}"}"
+    # Strip a trailing comment, then the surrounding quotes. A quoted value ends
+    # at its closing quote and anything past it is commentary; an unquoted one
+    # ends at the first whitespace-preceded '#'.
+    #
+    # Doing this at all is a fix, not a refinement. The previous form removed
+    # only a quote at the very END of the line, so any line carrying a trailing
+    # comment kept the comment inside the value — and the install.conf.example
+    # this repo ships has always had six of them. A silent install from the
+    # shipped template resolved its version to
+    # `v1.0.0"                        # pin for reproducibility`
+    # and wrote that into .env as the image tag. Same for email_provider,
+    # llm_provider, embedding_provider, offline and skip_admin.
+    case "$raw" in
+      '"'*) raw="${raw#\"}"; raw="${raw%%\"*}" ;;
+      *)    raw="${raw%%[[:space:]]#*}"; raw="${raw%"${raw##*[![:space:]]}"}" ;;
+    esac
     case "$key" in
       ""|\#*) continue ;;
       hostname)                    [ -z "$HOSTNAME" ]                  && HOSTNAME="$raw" ;;

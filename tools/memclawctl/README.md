@@ -33,7 +33,7 @@ pip install caura-memclawctl         # once published
 | `memclawctl license status` | Pretty-print current license + days remaining |
 | `memclawctl backup --out /backups/` | Wraps scripts/backup.sh |
 | `memclawctl restore --from <tar.gz>` | Wraps scripts/restore.sh |
-| `memclawctl upgrade --to <version> [--dry-run] [--no-backup] [-y]` | Delegates to `$MEMCLAW_HOME/upgrade.sh` — pre-upgrade pg_dump, pull, rolling up, health-stability check, auto-rollback |
+| `memclawctl upgrade --to <version> [--dry-run] [--no-backup] [-y]` | Delegates to `$CAURA_HOME/upgrade.sh` — pre-upgrade pg_dump, pull, rolling up, health-stability check, auto-rollback |  <!-- legacy-name-ok: the shipped CLI's own command, which is floor -->
 | `memclawctl rollback [-y]` | Roll back to the version recorded in `.memclaw-prev-version` (written by upgrade.sh) |
 | `memclawctl plugin install-url --fleet-id <id> [--api-url ...] [--api-key ...]` | Print the exact `curl -X POST \| bash` command a customer runs on an OpenClaw VM |
 | `memclawctl memory export <tenant> --api-key mc_...` | Stream all memories for a tenant to JSONL |

@@ -179,6 +179,14 @@ docker-compose.yml sets `MEMCLAW_API_URL` / `MEMCLAW_SITE_URL` /
 docker compose restart app-frontend
 ```
 
+> **These three keep the old spelling on purpose.** Every other setting in this
+> installer also answers to a `CAURA_*` name ([`env-aliases.md`](env-aliases.md)),
+> but these are read *inside* the application image, which is built in another
+> repo and ships on a tag customers have already pulled. A `CAURA_*` spelling
+> here would name something no released image reads, so the frontend would come
+> back up with no config at all. Do not "finish" the rename on these — they move
+> when the application image moves.
+
 ## Phone-home heartbeats never reach ops.caura.ai
 
 Connected deployments only — air-gap installs have `phone_home_enabled=false`

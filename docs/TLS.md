@@ -8,7 +8,7 @@ pick one of the patterns below.
 ## TL;DR — `install.sh` flags
 
 ```
-# (default — no flag needed) self-signed cert in $MEMCLAW_HOME/tls/
+# (default — no flag needed) self-signed cert in $CAURA_HOME/tls/
 --tls-cert <pem> --tls-key <pem>    # bring your own (corporate CA, external Let's Encrypt)
 --tls-domain <fqdn>                 # CN/SAN override; defaults to --hostname
 --bind-address 127.0.0.1            # only listen on loopback (front with your own proxy)
@@ -17,7 +17,7 @@ pick one of the patterns below.
 ```
 
 Reinstalling **doesn't** regenerate an existing self-signed cert; it
-reuses what's at `$MEMCLAW_HOME/tls/cert.pem` + `key.pem` so renewals
+reuses what's at `$CAURA_HOME/tls/cert.pem` + `key.pem` so renewals
 are explicit (delete the files, rerun `install.sh --tls-self-signed`).
 
 ---
@@ -60,7 +60,7 @@ curl -sL https://onprem.caura.ai/install.sh | sudo bash -s -- \
 What happens:
 - `openssl` generates an RSA-2048 cert valid 10 years with SAN
   `DNS:memclaw.acme.com, DNS:localhost, IP:127.0.0.1`.
-- `cert.pem` + `key.pem` land in `$MEMCLAW_HOME/tls/`.
+- `cert.pem` + `key.pem` land in `$CAURA_HOME/tls/`.
 - The gateway entrypoint detects them and switches to the TLS
   template — port 80 redirects to 443; HSTS for 30 days.
 
@@ -70,7 +70,7 @@ Caveats:
   set `NODE_TLS_REJECT_UNAUTHORIZED=0` in that VM's environment
   (downgrade — OK on a private network, never on the public
   internet).
-- Cert renewal is manual: `rm $MEMCLAW_HOME/tls/*.pem && install.sh --tls-self-signed`.
+- Cert renewal is manual: `rm $CAURA_HOME/tls/*.pem && install.sh --tls-self-signed`.
 
 ## Pattern 3 — Bring your own cert
 
@@ -136,7 +136,7 @@ curl -sL https://onprem.caura.ai/install.sh | sudo bash -s -- \
 ```
 
 What happens:
-- install.sh writes `$MEMCLAW_HOME/caddy/Caddyfile` rendered from your
+- install.sh writes `$CAURA_HOME/caddy/Caddyfile` rendered from your
   domain + email.
 - Adds `docker-compose.tls-letsencrypt.yml` overlay → Caddy sidecar on
   ports 80+443; gateway nginx loses its host port mapping (Caddy is

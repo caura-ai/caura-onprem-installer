@@ -923,3 +923,207 @@ def test_compose_resolves_image_tags_from_either_spelling():
     # The ops tag falls back through four names; the blank ones must all lose.
     ops = {"CAURA_OPS_VERSION": "", "MEMCLAW_OPS_VERSION": "v2.9.0", **old_only}  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
     assert tag_of("platform-operations", ops) == "v2.9.0", BLANK_NEW_BEATEN_BY_OLD
+
+
+# ── item 5.4: what the docs teach ────────────────────────────────────────────
+#
+# The teaching sweep has two failure modes that no gate catches on its own. A
+# table of forty pairs rots the first time a name is added and nothing says so.
+# And a doc that tells an operator to `sed` a key by its NEW name alone is worse
+# than one that says nothing: on every .env written before the rename that
+# command matches nothing, changes nothing, and reports nothing — the operator
+# believes they moved the version and the stack keeps running the old tag.
+
+ALIAS_TABLE = "docs/env-aliases.md"
+
+# Docs that instruct a hand-edit of .env. Scanned for the silent-no-op shape.
+_DOCS = [
+    f"docs/{n}"
+    for n in (
+        "upgrade.md",
+        "upgrade-runbook-operator.md",
+        "install.md",
+        "install-airgap.md",
+        "day2-ops.md",
+        "database.md",
+        "logging.md",
+        "security.md",
+        "troubleshooting.md",
+        "TLS.md",
+        "env-aliases.md",
+    )
+]
+
+
+def _table_pairs() -> set[tuple[str, str]]:
+    """(new, old) from every markdown row of the alias table."""
+    pairs = set()
+    for line in _read(ALIAS_TABLE).splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip().strip("`") for c in line.strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        new, old = cells[0], cells[1]
+        if new.startswith(NEW_PREFIX) and old.startswith(OLD_PREFIX):
+            pairs.add((new, old))
+        elif new.startswith("caura_") and old.startswith("memclaw_"):  # legacy-name-ok: the config-key spelling this row pairs up
+            pairs.add((new, old))
+    return pairs
+
+
+def test_the_alias_table_lists_every_env_pair_and_no_others():
+    """The one table is the surviving footprint, so it has to be the true one.
+
+    Derived from the tree on every run rather than reviewed by eye: a list of
+    forty rows maintained by hand goes stale the first time somebody adds a
+    name, and it goes stale silently.
+    """
+    listed = {new for new, _ in _table_pairs() if new.startswith(NEW_PREFIX)}
+    names = _all_names()
+    actual = {n for n in names if n.startswith(NEW_PREFIX)}
+    missing = sorted(actual - listed)
+    extra = sorted(listed - actual)
+    assert not missing, f"{ALIAS_TABLE} does not list: {missing}"
+    assert not extra, f"{ALIAS_TABLE} lists names that do not exist: {extra}"
+
+
+def test_every_alias_table_row_pairs_a_real_suffix():
+    """No row may pair two names that are not actually the same setting."""
+    bad = [
+        (new, old)
+        for new, old in _table_pairs()
+        if new.split("_", 1)[1].lower() != old.split("_", 1)[1].lower()
+    ]
+    assert not bad, f"rows whose two names do not share a suffix: {bad}"
+
+
+def test_the_alias_table_names_the_write_only_three():
+    """They are the one place the sweep must NOT reach, so the table says so."""
+    body = _read(ALIAS_TABLE)
+    for name in sorted(WRITE_ONLY):
+        assert name in body, (
+            f"{ALIAS_TABLE} does not mention {name} — the next sweep has nothing "
+            "telling it these three have no CAURA_* reader in any shipped image"
+        )
+
+
+def test_no_doc_teaches_an_env_edit_that_would_silently_do_nothing():
+    """A `sed` on the new name alone is a no-op on every install written before it.
+
+    This is the sharpest hazard in the teaching sweep, and it fails quietly:
+    `sed -i 's/^CAURA_VERSION=.*/.../' .env` against an .env that carries only
+    the old spelling matches nothing, exits 0, and leaves the operator believing
+    they bumped the version. Any doc that anchors on a CAURA_* key must also
+    handle its old-name twin on the same line.
+    """
+    offenders = []
+    for rel in _DOCS:
+        if not (REPO_ROOT / rel).is_file():
+            continue
+        for lineno, line in enumerate(_read(rel).splitlines(), 1):
+            if "sed" not in line:
+                continue
+            for m in re.finditer(r"\^\(?(?:CAURA\|MEMCLAW\)?_|CAURA_)([A-Z0-9_]+)=", line):  # legacy-name-ok: matches either spelling of an anchored key
+                suffix = m.group(1)
+                # An alternation covering both spellings is the correct form.
+                if f"CAURA|MEMCLAW)_{suffix}=" in line:  # legacy-name-ok: the pair-aware anchor this test requires
+                    continue
+                if OLD_PREFIX + suffix in line:
+                    continue
+                offenders.append(f"{rel}:{lineno}: {line.strip()[:100]}")
+    assert not offenders, (
+        "these anchor a sed on the new spelling only, which matches nothing on an "
+        "install that predates it:\n" + "\n".join(offenders)
+    )
+
+
+# ── the shipped templates have to actually work ──────────────────────────────
+#
+# Both of these were broken before item 5.4 and neither failed anything: a
+# template is documentation until someone runs it, and nothing ran them. They
+# are the files 5.4 teaches from, so "teaches the new name" is worth nothing if
+# the file it teaches from does not parse.
+
+
+def test_the_shipped_install_conf_parses_to_clean_values(tmp_path):
+    """Every value in install.conf.example survives the parser intact.
+
+    The parser used to strip only a quote at the very end of the line, so any
+    line carrying a trailing comment kept the comment inside the value — and the
+    shipped template has six of them. A silent install from it resolved its
+    version to `v1.0.0"                        # pin for reproducibility` and
+    wrote that into .env as the image tag.
+    """
+    conf = _read("install.conf.example")
+    checks = {
+        "MEMCLAW_VERSION": "v1.0.0",  # legacy-name-ok: the shell variable the parser fills, whose name is unchanged
+        "EMAIL_PROVIDER": "log",
+        "LLM_PROVIDER": "openai",
+        "EMBEDDING_PROVIDER": "local",
+        "OFFLINE": "false",
+        "SKIP_ADMIN": "false",
+    }
+    for var, want in checks.items():
+        got = _parse_conf(tmp_path, conf, var)
+        assert got == want, f"{var} parsed as {got!r}, expected {want!r}"
+        assert "#" not in got and '"' not in got, (
+            f"{var} kept template punctuation: {got!r}"
+        )
+
+
+def test_no_blank_valued_env_example_key_carries_a_trailing_comment():
+    """`KEY=   # note` makes Compose read the NOTE as the value.
+
+    Compose strips a trailing comment after a non-empty value but not after an
+    empty one, so every blank-valued key in the template was handing its own
+    documentation to the stack as a setting. Comments for those keys go on their
+    own line above.
+    """
+    offenders = [
+        f"{lineno}: {line.strip()[:80]}"
+        for lineno, line in enumerate(_read(".env.example").splitlines(), 1)
+        if re.match(r"^[A-Z_][A-Z0-9_]*=\s+#", line)
+    ]
+    assert not offenders, (
+        "these hand Compose their own comment as the value:\n" + "\n".join(offenders)
+    )
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="needs the docker CLI")
+def test_the_shipped_env_example_resolves_every_image_tag(tmp_path):
+    """Copy .env.example to .env, as its own header instructs, and it must work.
+
+    Resolved by Compose itself. Asserting the version rather than merely that
+    the parse succeeds: the failure this covers produced a syntactically fine
+    image reference whose tag was a sentence of English.
+    """
+    work = tmp_path / "stack"
+    work.mkdir()
+    shutil.copy(REPO_ROOT / "docker-compose.yml", work)
+    env = _read(".env.example")
+    for key, value in (
+        ("JWT_SECRET", "y" * 40),
+        ("POSTGRES_PASSWORD", "x"),
+        ("CORE_ADMIN_API_KEY", "z"),
+        ("PLATFORM_OPERATIONS_INTERNAL_TOKEN", "t"),
+        ("SETTINGS_ENCRYPTION_KEY", "k"),
+    ):
+        env = re.sub(rf"^{key}=$", f"{key}={value}", env, flags=re.MULTILINE)
+    (work / ".env").write_text(env, encoding="utf-8")
+
+    proc = subprocess.run(
+        ["docker", "compose", "config", "--format", "json"],
+        capture_output=True, text=True, cwd=work, check=False,
+    )
+    if proc.returncode != 0:
+        pytest.skip(f"docker compose unavailable here: {proc.stderr.strip()[:200]}")
+    services = json.loads(proc.stdout)["services"]
+
+    pinned = re.search(r"^CAURA_VERSION=(\S+)", env, re.MULTILINE).group(1)
+    for name in ("core-api", "core-storage-api", "app-frontend", "platform-operations"):
+        tag = services[name]["image"].rsplit(":", 1)[1]
+        assert tag == pinned, (
+            f"{name} resolved to {tag!r}, not the version the template pins "
+            f"({pinned!r}) — the template does not work as its header says"
+        )

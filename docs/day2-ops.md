@@ -34,7 +34,7 @@ Every service writes JSON logs to **two places**:
 
 - stdout → `docker compose logs -f <service>` — and whatever log
   driver you've configured in `docker-compose.yml` (gelf, fluentd…).
-- `$MEMCLAW_HOME/logs/<service>/<service>.log` — on-disk files,
+- `$CAURA_HOME/logs/<service>/<service>.log` — on-disk files,
   rotated daily at UTC midnight, 5-day retention.
 
 Full layout, redaction rules, and the support-bundle workflow are in
