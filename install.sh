@@ -41,13 +41,14 @@ VERSION="1.0.0"
 # Both spellings are written out in full at every site rather than built from a
 # shared suffix: the old names have to stay greppable, because grepping for them
 # is how this migration is tracked.
-MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"
+# Defaults for these six are NOT applied here — see "Apply defaults" below.
+MEMCLAW_HOME="${MEMCLAW_HOME:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 CONFIG_FILE=""
 NON_INTERACTIVE="false"
-OFFLINE="${MEMCLAW_OFFLINE:-false}"
+OFFLINE="${MEMCLAW_OFFLINE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 OFFLINE="${CAURA_OFFLINE:-$OFFLINE}"
-SKIP_ADMIN="${MEMCLAW_SKIP_ADMIN:-false}"
+SKIP_ADMIN="${MEMCLAW_SKIP_ADMIN:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 SKIP_ADMIN="${CAURA_SKIP_ADMIN:-$SKIP_ADMIN}"
 
 HOSTNAME="${MEMCLAW_HOSTNAME:-}"
@@ -86,11 +87,11 @@ POSTGRES_REQUIRE_SSL="${MEMCLAW_POSTGRES_REQUIRE_SSL:-}"
 POSTGRES_REQUIRE_SSL="${CAURA_POSTGRES_REQUIRE_SSL:-$POSTGRES_REQUIRE_SSL}"
 LLM_PROVIDER="${MEMCLAW_LLM_PROVIDER:-}"
 LLM_PROVIDER="${CAURA_LLM_PROVIDER:-$LLM_PROVIDER}"
-EMAIL_PROVIDER="${MEMCLAW_EMAIL_PROVIDER:-log}"
+EMAIL_PROVIDER="${MEMCLAW_EMAIL_PROVIDER:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 EMAIL_PROVIDER="${CAURA_EMAIL_PROVIDER:-$EMAIL_PROVIDER}"
-EMBEDDING_PROVIDER="${MEMCLAW_EMBEDDING_PROVIDER:-local}"
+EMBEDDING_PROVIDER="${MEMCLAW_EMBEDDING_PROVIDER:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 EMBEDDING_PROVIDER="${CAURA_EMBEDDING_PROVIDER:-$EMBEDDING_PROVIDER}"
-MEMCLAW_VERSION="${MEMCLAW_VERSION:-v2.8.4}"
+MEMCLAW_VERSION="${MEMCLAW_VERSION:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 MEMCLAW_VERSION="${CAURA_VERSION:-$MEMCLAW_VERSION}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 
 # TLS — four modes:
@@ -229,17 +230,17 @@ if [ -n "$CONFIG_FILE" ]; then
       postgres_user)               [ -z "$POSTGRES_USER" ]             && POSTGRES_USER="$raw" ;;
       postgres_db)                 [ -z "$POSTGRES_DB" ]               && POSTGRES_DB="$raw" ;;
       postgres_require_ssl)        [ -z "$POSTGRES_REQUIRE_SSL" ]      && POSTGRES_REQUIRE_SSL="$raw" ;;
-      email_provider)              EMAIL_PROVIDER="$raw" ;;
-      embedding_provider)          EMBEDDING_PROVIDER="$raw" ;;
-      jwt_secret_file)             JWT_SECRET_FILE="$raw" ;;
-      postgres_password_file)      POSTGRES_PASSWORD_FILE="$raw" ;;
-      core_admin_api_key_file)     CORE_ADMIN_API_KEY_FILE="$raw" ;;
+      email_provider)              [ -z "$EMAIL_PROVIDER" ]            && EMAIL_PROVIDER="$raw" ;;
+      embedding_provider)          [ -z "$EMBEDDING_PROVIDER" ]        && EMBEDDING_PROVIDER="$raw" ;;
+      jwt_secret_file)             [ -z "$JWT_SECRET_FILE" ]           && JWT_SECRET_FILE="$raw" ;;
+      postgres_password_file)      [ -z "$POSTGRES_PASSWORD_FILE" ]    && POSTGRES_PASSWORD_FILE="$raw" ;;
+      core_admin_api_key_file)     [ -z "$CORE_ADMIN_API_KEY_FILE" ]   && CORE_ADMIN_API_KEY_FILE="$raw" ;;
       memclaw_home)                _conf_memclaw_home="$raw" ;;      # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
       caura_home)                  _conf_caura_home="$raw" ;;
       memclaw_version)             _conf_memclaw_version="$raw" ;;   # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
       caura_version)               _conf_caura_version="$raw" ;;
-      offline)                     OFFLINE="$raw" ;;
-      skip_admin)                  SKIP_ADMIN="$raw" ;;
+      offline)                     [ -z "$OFFLINE" ]                   && OFFLINE="$raw" ;;
+      skip_admin)                  [ -z "$SKIP_ADMIN" ]                && SKIP_ADMIN="$raw" ;;
     esac
   done < "$CONFIG_FILE"
 
@@ -248,10 +249,40 @@ if [ -n "$CONFIG_FILE" ]; then
   # environment or a CLI flag already supplied: a home key with nothing after
   # the `=` is a half-filled template, not an instruction to install into "".
   _conf_home="${_conf_caura_home:-$_conf_memclaw_home}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
-  [ -n "$_conf_home" ] && MEMCLAW_HOME="$_conf_home"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  [ -n "$_conf_home" ] && [ -z "$MEMCLAW_HOME" ] && MEMCLAW_HOME="$_conf_home"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   _conf_version="${_conf_caura_version:-$_conf_memclaw_version}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
-  [ -n "$_conf_version" ] && MEMCLAW_VERSION="$_conf_version"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  [ -n "$_conf_version" ] && [ -z "$MEMCLAW_VERSION" ] && MEMCLAW_VERSION="$_conf_version"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 fi
+
+# ── Apply defaults ─────────────────────────────────────────────────────────
+#
+# Last, so the documented order is the order the code runs in:
+#
+#     CLI flags  >  environment variables  >  --config file  >  defaults
+#
+# These six carry a NON-EMPTY default, and that is why they used to sit above
+# and why the config file used to beat a flag. The other thirteen keys default
+# to "", so `[ -z "$VAR" ]` in the config block reads as "nothing higher set
+# this" and the file correctly fills the gap. For these six the same guard was
+# never true — the install root already held its default by then — so the arms
+# were left unguarded, and an unguarded arm overwrites a flag.
+#
+# The obvious repair, copying `[ -z "$VAR" ]` onto the remaining arms, silently
+# does the opposite: with the default already applied the guard never fires and
+# the key stops working from the config file at all.
+#
+# So the defaults move here instead. Every key is now empty until something
+# actually sets it, one guard is correct for all twenty-two, and the config file
+# fills only what nothing above it supplied. HOSTNAME has always worked this way
+# (its default lands further down, next to the generated secrets); this is that
+# pattern applied to the rest.
+_EMBEDDING_PROVIDER_CHOSEN="$EMBEDDING_PROVIDER"   # before the default lands
+MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"  # legacy-name-ok: pinned floor string, and the install root default
+MEMCLAW_VERSION="${MEMCLAW_VERSION:-v2.8.4}"  # legacy-name-ok: the shipped release pin, unchanged
+OFFLINE="${OFFLINE:-false}"
+SKIP_ADMIN="${SKIP_ADMIN:-false}"
+EMAIL_PROVIDER="${EMAIL_PROVIDER:-log}"
+EMBEDDING_PROVIDER="${EMBEDDING_PROVIDER:-local}"
 
 # Re-export in MEMCLAW_* form so sudo -E preserves them into the child.
 # The child re-parses "$@" anyway (which is the primary mechanism), but
@@ -365,16 +396,20 @@ OPENAI_API_KEY=$(read_file "$OPENAI_API_KEY_FILE" || true)
 # semantic search returns zero hits. The fatter embedder image is only
 # engaged when we're actually using local — see LOCAL_EMBEDDINGS below.
 #
-# The third test asks "did the operator pick a provider themselves?", and it has
-# to ask it of BOTH spellings concatenated. Testing only the old name would read
-# an explicit CAURA_EMBEDDING_PROVIDER=local as "unset" and overwrite the
-# operator's deliberate choice with openai — an empty value here means "skip
-# this override", never "refuse", so it is the first-non-empty case and not the
-# survivable first-defined one. Concatenation is the same idiom the
-# license/admin-password checks above use for "neither of these is set".
+# The third test asks "did the operator pick a provider themselves?", and it now
+# asks it of every source rather than of the environment alone.
+# _EMBEDDING_PROVIDER_CHOSEN is the value as it stood immediately before the
+# default was applied, so it is non-empty exactly when an env var, a
+# --embedding-provider flag or an install.conf key supplied one.
+#
+# Testing the environment was too narrow in two directions. It read an explicit
+# CAURA_EMBEDDING_PROVIDER=local as unset, which the dual-read fixed; it also
+# ignored --embedding-provider and the config file entirely, so an operator who
+# asked for local embeddings on the command line and happened to supply an
+# OpenAI key had that choice overwritten and their key spent.
 if [ -n "${OPENAI_API_KEY:-}" ] \
    && [ "${EMBEDDING_PROVIDER}" = "local" ] \
-   && [ -z "${CAURA_EMBEDDING_PROVIDER:-}${MEMCLAW_EMBEDDING_PROVIDER:-}" ]; then  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+   && [ -z "$_EMBEDDING_PROVIDER_CHOSEN" ]; then
   EMBEDDING_PROVIDER="openai"
   log "OPENAI_API_KEY provided; setting EMBEDDING_PROVIDER=openai (override with --embedding-provider)."
 fi

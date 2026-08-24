@@ -6,6 +6,10 @@
 # Precedence: CLI flags > env vars (CAURA_*) > this file > defaults.
 # Every field is optional; install.sh auto-generates secrets if omitted.
 #
+# That order is now what the installer actually does. Nine keys here used to
+# win over a flag or an env var set on the same run; if you were relying on
+# this file to override one of those, set it here only — not in both places.
+#
 # The two branded keys below are `caura_home` and `caura_version`. Each has an
 # older spelling that is a permanent alias and keeps working; whichever holds
 # a NON-EMPTY value wins, so a key left blank never blanks the setting. The full
