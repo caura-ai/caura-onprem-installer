@@ -1,6 +1,11 @@
-# MemClaw Enterprise — On-Prem Deployment
+# Caura Enterprise — On-Prem Deployment
 
-Self-hosted MemClaw Enterprise as a Docker Compose stack. Runs on a
+> **MemClaw is now Caura** — same product, one name. All installed-machine  <!-- legacy-name-ok: the rename callout has to name the old brand -->
+> identifiers (`/etc/memclaw`, `memclaw-*` images, `MEMCLAW_*` vars, the  <!-- legacy-name-ok: lists the frozen installed-machine identifiers -->
+> `memclaw` postgres role) are unchanged, permanently: existing installs  <!-- legacy-name-ok: lists the frozen installed-machine identifiers -->
+> need nothing.
+
+Self-hosted Caura Enterprise as a Docker Compose stack. Runs on a
 single VM (connected or air-gapped) and is fully managed via a signed
 license file issued by Caura.
 

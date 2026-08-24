@@ -1,4 +1,4 @@
-# Security model — MemClaw on-prem
+# Security model — Caura on-prem
 
 Reference for customer CISOs, SOC teams, and auditors. Scope: the
 on-prem deployment as shipped by this bundle, not the memclaw.net SaaS.

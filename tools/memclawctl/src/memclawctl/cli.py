@@ -55,7 +55,7 @@ def _client(url: str, admin_key: str | None) -> httpx.Client:
     return httpx.Client(base_url=url, headers=headers, timeout=30, verify=False)
 
 
-@click.group(help="Day-2 operations for on-prem MemClaw.")
+@click.group(help="Day-2 operations for on-prem Caura (CLI name unchanged).")
 @click.option(
     "--url", default=DEFAULT_URL, show_default=True, help="Base URL of the stack."
 )
@@ -82,7 +82,7 @@ def status(ctx: click.Context) -> None:
         setup = _get_json(c, "/api/setup/status")
         lic = _get_json(c, "/api/license/status")
 
-    t = Table(show_header=False, title="MemClaw")
+    t = Table(show_header=False, title="Caura")
     t.add_row("setup.admin_exists", _fmt(setup.get("admin_exists")))
     t.add_row("setup.license_loaded", _fmt(setup.get("license_loaded")))
     t.add_row("license.configured", _fmt(lic.get("configured")))

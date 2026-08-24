@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MemClaw Enterprise — on-prem upgrade.
+# Caura Enterprise — on-prem upgrade.
 #
 # Usage:
 #   curl -sL https://onprem.caura.ai/upgrade.sh | sudo bash
@@ -194,7 +194,7 @@ DISK_GB=$(df -BG "$MEMCLAW_HOME" | awk 'NR==2 {sub("G","",$4); print $4}')
 cat <<EOF
 
 ──────────────────────────────────────────
-  MemClaw upgrade plan
+  Caura upgrade plan
 ──────────────────────────────────────────
   home:         $MEMCLAW_HOME
   from:         $FROM_VERSION

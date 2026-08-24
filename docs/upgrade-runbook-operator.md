@@ -28,14 +28,14 @@ Compose file set on these boxes (**always pass all three**, in this order):
 
 ## Phase 1 — Cut the release
 
-**OSS (`caura-memclaw`):** merge the release-please PR (manual — never auto-merge) → tags `backend-v*` + `plugin-v*`. If the plugin changed:
+**OSS (`caura`):** merge the release-please PR (manual — never auto-merge) → tags `backend-v*` + `plugin-v*`. If the plugin changed:
 - bump `MIN_RECOMMENDED_PLUGIN_VERSION` (core-api `version_compat.py`) to the new plugin version (companion PR), and
 - the served plugin version (`package.json`, `openclaw.plugin.json`, `src/version.ts` via `gen-version.sh`) must equal that floor. **release-please does NOT run `gen-version.sh`** → `check:version` fails on the release PR until you regenerate `version.ts` and push. **All commits need a DCO `Signed-off-by:`** (`git commit -s`).
 
-**Enterprise (`caura-memclaw-enterprise`):** tag off `dev` HEAD — create the ref via API (a shallow `git clone` of the enterprise repo has hung):
+**Enterprise (`caura-enterprise`):** tag off `dev` HEAD — create the ref via API (a shallow `git clone` of the enterprise repo has hung):
 ```bash
-gh api -X POST repos/caura-ai/caura-memclaw-enterprise/git/refs \
-  -f ref=refs/tags/onprem-vX.Y.Z -f sha=$(gh api repos/caura-ai/caura-memclaw-enterprise/commits/dev --jq .sha)
+gh api -X POST repos/caura-ai/caura-enterprise/git/refs \
+  -f ref=refs/tags/onprem-vX.Y.Z -f sha=$(gh api repos/caura-ai/caura-enterprise/commits/dev --jq .sha)
 ```
 `release-onprem.yml` builds **11** images (8 services + `core-operations` + `core-worker` + `platform-operations`). The `core-api-embedder` job **fails (404) — expected** for OpenAI customers; that marks the overall run "failure" and **skips `finalize`** (air-gap tarball/sign/SBOM). The 11 service images still publish — verify those jobs are green.
 

@@ -1,6 +1,6 @@
 # memclawctl
 
-Day-2 operations CLI for an on-prem MemClaw deployment. Talks to the
+Day-2 operations CLI for an on-prem Caura deployment. Talks to the
 running stack over HTTP — no direct DB access — so the same tool works
 in connected and air-gapped installs.
 

@@ -1,4 +1,4 @@
-# MemClaw Enterprise on-prem stack.
+# Caura Enterprise on-prem stack.
 #
 # Images are pulled from ghcr.io/caura-ai. For air-gapped installs use
 # `docker compose -f docker-compose.yml -f docker-compose.airgap.yml up -d`
@@ -325,7 +325,7 @@ services:
     restart: unless-stopped
     # Default binds to 0.0.0.0 for backward compatibility with existing
     # installs. install.sh writes BIND_ADDRESS=127.0.0.1 into .env when
-    # the customer runs --bind-address=loopback to put MemClaw behind
+    # the customer runs --bind-address=loopback to put Caura behind
     # their own reverse proxy. 443 is always exposed but only listens
     # when /opt/memclaw/tls/ has cert+key (entrypoint detects).
     ports:

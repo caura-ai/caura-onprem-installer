@@ -1,7 +1,7 @@
 # Install guide — air-gapped
 
 For customer VMs with **no outbound internet**. The tarball bundles every
-image needed (MemClaw services + upstream bases: Postgres/pgvector, Redis,
+image needed (Caura services + upstream bases: Postgres/pgvector, Redis,
 RabbitMQ) so `docker compose` never needs to pull.
 
 > **Local embeddings (`--embedding-provider local`).** A true air-gap

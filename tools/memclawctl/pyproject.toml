@@ -1,7 +1,7 @@
 [project]
 name = "caura-memclawctl"
 version = "0.1.0"
-description = "Day-2 operations CLI for on-prem MemClaw deployments"
+description = "Day-2 operations CLI for on-prem Caura deployments (CLI name unchanged)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }

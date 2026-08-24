@@ -1,10 +1,10 @@
 # Database
 
-MemClaw stores everything in PostgreSQL. By default the stack runs a
+Caura stores everything in PostgreSQL. By default the stack runs a
 bundled `postgres` service (`pgvector/pgvector:pg16`) with a Docker
 volume — zero configuration, good for most on-prem installs.
 
-You can instead point MemClaw at **your own PostgreSQL** (a managed
+You can instead point Caura at **your own PostgreSQL** (a managed
 service like Amazon RDS, Google Cloud SQL, AlloyDB, Azure Database, or a
 central self-managed cluster). This is useful when you already run
 HA Postgres, want managed backups/PITR, or must keep data in a specific
@@ -13,7 +13,7 @@ instance for compliance.
 ## Requirements for an external instance
 
 1. **PostgreSQL 14+** (the bundled image is pg16; 14 or newer is fine).
-2. **The `pgvector` extension must be available.** MemClaw stores 1024-dim
+2. **The `pgvector` extension must be available.** Caura stores 1024-dim
    embeddings in `vector` columns and the migrations run
    `CREATE EXTENSION IF NOT EXISTS vector`. On managed Postgres this is
    supported but usually has to be enabled:
@@ -28,7 +28,7 @@ instance for compliance.
    runs Alembic migrations (creates schemas `public` and `enterprise`,
    tables, indexes, and the extension). After the initial migration the
    user no longer needs DDL, but it's simplest to leave it.
-4. Network reachability from the MemClaw host to the DB host/port.
+4. Network reachability from the Caura host to the DB host/port.
 
 ## Configuration
 

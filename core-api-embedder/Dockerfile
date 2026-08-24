@@ -17,7 +17,7 @@
 #     need local embeddings. The base core-api image is plenty.
 #
 # Use this image when:
-#   - Air-gapped deployment OR you want MemClaw to run without any
+#   - Air-gapped deployment OR you want Caura to run without any
 #     external LLM dependency.
 #
 # Wire up via docker-compose.embedder.yml overlay — see the bundle README.

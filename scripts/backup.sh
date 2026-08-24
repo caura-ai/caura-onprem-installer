@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MemClaw on-prem backup script.
+# Caura on-prem backup script.
 #
 # Dumps Postgres (pg_dump -Fc), snapshots Redis (BGSAVE), and optionally
 # exports RabbitMQ definitions. Bundles everything + the .env +

@@ -1,9 +1,9 @@
 # On-prem gateway config — HTTP-only variant.
 #
 # Used when the customer hasn't provided a TLS cert (default install).
-# Customers fronting MemClaw with their own TLS terminator (Caddy,
+# Customers fronting Caura with their own TLS terminator (Caddy,
 # Traefik, cloud LB, etc.) keep this and pass through. Customers who
-# want MemClaw itself to terminate TLS install certs into
+# want Caura itself to terminate TLS install certs into
 # $MEMCLAW_HOME/tls/ — install.sh writes that mount and the entrypoint
 # renders memclaw-tls.conf.template instead of this one.
 #

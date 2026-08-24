@@ -12,7 +12,7 @@
 
 resolver 127.0.0.11 valid=10s ipv6=off;
 
-# Optional behind-LB note: if a customer fronts MemClaw with another
+# Optional behind-LB note: if a customer fronts Caura with another
 # TLS terminator AND uses these certs, X-Forwarded-Proto from the
 # outer proxy is still honoured by upstream services because the
 # location includes set proxy_set_header X-Forwarded-Proto $scheme.

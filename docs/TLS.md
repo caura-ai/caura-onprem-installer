@@ -1,4 +1,4 @@
-# TLS for on-prem MemClaw
+# TLS for on-prem Caura
 
 **Default: TLS on.** A fresh `install.sh` run with no TLS-related
 flags generates a self-signed cert and the gateway listens on 443,
@@ -22,10 +22,10 @@ are explicit (delete the files, rerun `install.sh --tls-self-signed`).
 
 ---
 
-## Pattern 1 — Front MemClaw with your existing TLS terminator
+## Pattern 1 — Front Caura with your existing TLS terminator
 
 Recommended when you already run nginx, Traefik, Caddy, Cloudflare
-Tunnel, an AWS ALB, etc. on the perimeter. MemClaw stays HTTP
+Tunnel, an AWS ALB, etc. on the perimeter. Caura stays HTTP
 internally; your terminator handles TLS.
 
 Install:
@@ -39,9 +39,9 @@ curl -sL https://onprem.caura.ai/install.sh | sudo bash -s -- \
 Your proxy:
 - Listens on 443 with your cert.
 - Sets `X-Forwarded-Proto: https`, `X-Forwarded-For`, `Host: memclaw.acme.com`.
-- Proxies to `http://<host>:80` where MemClaw is listening on loopback.
+- Proxies to `http://<host>:80` where Caura is listening on loopback.
 
-MemClaw honours `X-Forwarded-Proto`, so generated URLs (license
+Caura honours `X-Forwarded-Proto`, so generated URLs (license
 download, plugin install command, etc.) come back with `https://`.
 
 ## Pattern 2 — Self-signed (auto, easiest)
@@ -92,7 +92,7 @@ Renewal: drop the new cert in place and `docker compose restart gateway`.
 
 ## Plugin (OpenClaw node) configuration
 
-Once MemClaw runs HTTPS, OpenClaw nodes should reach it over HTTPS too:
+Once Caura runs HTTPS, OpenClaw nodes should reach it over HTTPS too:
 
 ```
 curl -s -X POST "https://memclaw.acme.com/api/v1/install-plugin" \
@@ -115,7 +115,7 @@ not for production).
 
 ## Pattern 4 — Let's Encrypt (automatic, recommended for public deployments)
 
-Best for any deployment where the MemClaw VM has a publicly-resolvable
+Best for any deployment where the Caura VM has a publicly-resolvable
 FQDN. Caddy sidecar handles ACME issuance + renewal automatically; no
 manual cert juggling, ever.
 
