@@ -64,9 +64,12 @@ F="-f docker-compose.yml -f docker-compose.override.yml -f docker-compose.tls-le
 bash scripts/backup.sh
 
 # 2. Bump versions — keep the scheduler images in lockstep with the stack
-sed -i 's/^MEMCLAW_VERSION=.*/MEMCLAW_VERSION=vX.Y.Z/' .env
+# Rewrites whichever spelling this .env carries. A managed box installed
+# before the rename has only MEMCLAW_*, so a CAURA_-only sed would match; legacy-name-ok: names both spellings so the edit works on an .env written before the rename
+# nothing and silently leave the box on its old tag. Both names are read.
+sed -i -E 's/^(CAURA|MEMCLAW)_VERSION=.*/\1_VERSION=vX.Y.Z/' .env  # legacy-name-ok: names both spellings so the edit works on an .env written before the rename
 # Converge the transitional ops-version skew: ops images track the stack.
-sed -i 's/^MEMCLAW_OPS_VERSION=.*/MEMCLAW_OPS_VERSION=vX.Y.Z/' .env   # or delete the line (falls back to MEMCLAW_VERSION)
+sed -i -E 's/^(CAURA|MEMCLAW)_OPS_VERSION=.*/\1_OPS_VERSION=vX.Y.Z/' .env   # or delete the line — BOTH spellings if present — to track the stack version; legacy-name-ok: names both spellings so the edit works on an .env written before the rename
 
 # 3. Pull service images — INCLUDING core-operations (and platform-operations if deployed)
 docker compose $F pull core-api core-storage-api platform-admin-api platform-auth-api \
@@ -99,7 +102,7 @@ With the floor bumped, manifest-aware nodes (plugin ≥ 2.6.0) auto-upgrade on t
 
 | Service | What it does | On-prem reality |
 |---------|--------------|-----------------|
-| **core-operations** | OSS lifecycle crons: archive-expired/stale, **purge-soft-deleted** (retention, default 30d), crystallize, entity-link, insights. | **Deployed.** Fires fanout POSTs to core-api; **core-api self-consumes them in-process** on the InProcess event bus (`register_archive_consumers` under `isinstance(event_bus, InProcessEventBus)` + pipeline/insights always). Single-replica. Pinned to `MEMCLAW_OPS_VERSION`. Logs to **stdout** (image runs non-root). Scheduler is **aligned** (daily cadence; does **not** fire on container startup). |
+| **core-operations** | OSS lifecycle crons: archive-expired/stale, **purge-soft-deleted** (retention, default 30d), crystallize, entity-link, insights. | **Deployed.** Fires fanout POSTs to core-api; **core-api self-consumes them in-process** on the InProcess event bus (`register_archive_consumers` under `isinstance(event_bus, InProcessEventBus)` + pipeline/insights always). Single-replica. Pinned to `CAURA_OPS_VERSION`. Logs to **stdout** (image runs non-root). Scheduler is **aligned** (daily cadence; does **not** fire on container startup). |
 | **platform-operations** | session-cleanup (5m) + org-hard-delete-sweep (24h), synchronous via platform-admin-api. | **Deferred** on eToro. Needs `PLATFORM_OPERATIONS_INTERNAL_TOKEN` on **both** itself and platform-admin-api; admin-api listens on **:8001** (not the :8101 cloud default). Its image is enterprise → private; make pullable before deploying. |
 | **core-worker** | SaaS pubsub offload for embed/enrich/lifecycle. | **Not used on-prem** — the inprocess bus means core-api handles lifecycle itself. |
 
@@ -115,7 +118,8 @@ core-api logs `lifecycle purge-soft-deleted processed` with per-org `deleted` co
 ## Consolidated gotchas
 - `scp` + `ssh sudo bash <file>`; never pipe a here-doc containing `docker compose exec`.
 - Always all three `-f` files; never `--remove-orphans`; force-recreate platform-storage-api for migrations.
-- Keep `MEMCLAW_OPS_VERSION` == `MEMCLAW_VERSION` (the skew var was a one-time transitional hack).
+- Keep the ops-version pin == the stack version (the skew var was a one-time transitional hack).
+- `.env` keys have two spellings (`CAURA_*` and the older `MEMCLAW_*`); both are read, first non-empty wins. Rewrite whichever the box has — see [`env-aliases.md`](env-aliases.md).  <!-- legacy-name-ok: names both spellings so the edit works on an .env written before the rename -->
 - Cut enterprise tags via `gh api … /git/refs` (clone hangs).
 - release-please needs `gen-version.sh` re-run for `version.ts`; DCO sign-off required; merges are manual.
 - New ghcr image packages are private → make public / grant access before on-prem pull.

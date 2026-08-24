@@ -30,7 +30,7 @@ installs see `install-airgap.md`.
 
 ## Version pinning
 
-`MEMCLAW_VERSION` in `.env` controls which image tag every service runs.
+`CAURA_VERSION` in `.env` controls which image tag every service runs.
 The installer pins it to a specific release (e.g. `v2.8.4`) by default —
 keep it pinned to a release tag rather than `latest` so the deployment is
 reproducible and every service runs the same version. Bump it deliberately

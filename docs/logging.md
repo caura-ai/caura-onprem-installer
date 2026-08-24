@@ -5,7 +5,7 @@ On-prem MemClaw writes structured JSON logs to two places:
 - **stdout** of each container — captured by `docker compose logs` and
   anything your log shipper (Loki, Promtail, Filebeat, cloud agent) is
   configured to read from the Docker engine.
-- **`$MEMCLAW_HOME/logs/<service>/<service>.log`** — on-disk files,
+- **`$CAURA_HOME/logs/<service>/<service>.log`** — on-disk files,
   rotated daily at UTC midnight, **5-day retention**. Nothing reaches
   out to external log services without your configuration.
 
@@ -152,7 +152,7 @@ HMAC-SHA256 signed with a key derived from `(license_id, issued_at)`
 from the installed license. The endpoint verifies against the matching
 license row server-side — no shared secret is needed. Default
 endpoint is `https://support.caura.ai/api/onprem/support`; override
-with `--endpoint` or `MEMCLAW_SUPPORT_URL` for self-hosted support
+with `--endpoint` or `CAURA_SUPPORT_URL` for self-hosted support
 portals.
 
 Uploads are gated on the leak scanner by default. If the scanner

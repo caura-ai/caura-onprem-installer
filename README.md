@@ -32,7 +32,7 @@ first user account.
 
 ## Silent / unattended install
 
-Supports every field via CLI flag, env var (`MEMCLAW_*`), or a single
+Supports every field via CLI flag, env var (`CAURA_*`), or a single
 config file:
 
 ```bash
@@ -40,6 +40,10 @@ config file:
 ```
 
 See `install.conf.example` for the full template.
+
+Every setting also answers to its older `MEMCLAW_*` name — permanently, with no  <!-- legacy-name-ok: teaches the old spelling so a reader recognises it -->
+deprecation date, so an existing install needs no change. The one table of both
+spellings is [`docs/env-aliases.md`](docs/env-aliases.md).
 
 ## Repository layout
 
@@ -65,6 +69,7 @@ See `install.conf.example` for the full template.
     ├── day2-ops.md
     ├── logging.md               # log layout + support-bundle workflow
     ├── upgrade.md
+    ├── env-aliases.md            # the one table of old/new env-name pairs
     └── troubleshooting.md
 ```
 

@@ -11,7 +11,7 @@ RabbitMQ) so `docker compose` never needs to pull.
 > when `EMBEDDING_PROVIDER=local` and no LLM key is set. **Confirm the
 > embedder image for your target version is present in the release
 > tarball before installing** (`docker images | grep core-api-embedder`,
-> tag must match `MEMCLAW_VERSION`). If it's absent, either obtain a
+> tag must match `CAURA_VERSION`). If it's absent, either obtain a
 > tarball that includes it from Caura, or run connected with an external
 > embedding provider (OpenAI / Anthropic / Gemini). Without an embedder
 > image, memory writes still work but semantic recall returns
@@ -141,5 +141,5 @@ docker compose exec platform-admin-api memclawctl license load \
 ## Upgrades
 
 See `upgrade.md` — air-gap upgrades follow the same pattern: load the new
-release tarball with `airgap-load.sh`, bump `MEMCLAW_VERSION=vX.Y.Z` in
+release tarball with `airgap-load.sh`, bump `CAURA_VERSION=vX.Y.Z` in
 `/opt/memclaw/.env`, run `docker compose up -d`.

@@ -358,6 +358,35 @@ SENTINELS: tuple[Sentinel, ...] = (
         kind=LITERAL,
         breaks="the offline embedder overlay stops matching the loaded image's tag",
     ),
+    # -- The three frontend keys with no reader in this repo. -------------------
+    #
+    # Added with item 5.4, and specifically because of it. These are set on
+    # app-frontend and consumed INSIDE the application image, which is built in
+    # another repo and ships on tags customers have already pulled. Nothing here
+    # reads them, so no test in this repo fails if they are re-spelled — and 5.4
+    # has just made every name around them say CAURA_*, which makes these three
+    # look like the sweep's last unfinished corner. They are not: renaming them
+    # points the frontend at a key no released image reads, and it comes back up
+    # with no config at all. docs/troubleshooting.md says so in prose; this is
+    # the half that fails a build.
+    Sentinel(
+        path="docker-compose.yml",
+        text='MEMCLAW_API_URL: "https://${PUBLIC_HOSTNAME',  # legacy-name-ok: pinned floor string
+        kind=LITERAL,
+        breaks="the frontend loses its API base URL and every dashboard call 404s",
+    ),
+    Sentinel(
+        path="docker-compose.yml",
+        text='MEMCLAW_SITE_URL: "https://${PUBLIC_HOSTNAME',  # legacy-name-ok: pinned floor string
+        kind=LITERAL,
+        breaks="the frontend renders links against the wrong origin",
+    ),
+    Sentinel(
+        path="docker-compose.yml",
+        text='MEMCLAW_BILLING_ENABLED: "false"',  # legacy-name-ok: pinned floor string
+        kind=LITERAL,
+        breaks="billing UI reappears in an on-prem build where it must stay off",
+    ),
 )
 
 

@@ -3,15 +3,20 @@
 # Usage:
 #   ./install.sh --config install.conf --non-interactive
 #
-# Precedence: CLI flags > env vars (MEMCLAW_*) > this file > defaults.
+# Precedence: CLI flags > env vars (CAURA_*) > this file > defaults.
 # Every field is optional; install.sh auto-generates secrets if omitted.
+#
+# The two branded keys below are `caura_home` and `caura_version`. Each has an
+# older spelling that is a permanent alias and keeps working; whichever holds
+# a NON-EMPTY value wins, so a key left blank never blanks the setting. The full
+# list of both spellings is in docs/env-aliases.md.
 
 # Required
-hostname = "memclaw.acme.com"
+hostname = "caura.acme.com"
 admin_email = "admin@acme.com"
 # Either admin_password (inline) or admin_password_file (preferred for secrets)
 # admin_password = "..."
-admin_password_file = "/run/secrets/memclaw_admin_pw"
+admin_password_file = "/run/secrets/caura_admin_pw"
 license = "/path/to/license.key"                  # OR license_url = "https://..."
 
 # LLM / embedding — pick one path
@@ -39,7 +44,7 @@ postgres_password_file = ""
 core_admin_api_key_file = ""
 
 # Install location / mode
-memclaw_home = "/opt/memclaw"
-memclaw_version = "v1.0.0"                        # pin for reproducibility
+caura_home = "/opt/memclaw"                       # legacy-name-ok: the install path is floor; only the key is re-spelled
+caura_version = "v1.0.0"                          # pin for reproducibility
 offline = false                                   # true = use docker-compose.airgap.yml
 skip_admin = false                                # true = let web wizard create the admin
