@@ -190,12 +190,12 @@ SENTINELS: tuple[Sentinel, ...] = (
     # -- The install root. A script default with nothing on disk pinning it. ---
     #
     # The install root is never written into .env — it is a default repeated in
-    # SEVEN places and nothing else. So an existing install has nothing recording
+    # EIGHT places and nothing else. So an existing install has nothing recording
     # where it lives: flip the default and every day-2 tool looks in an empty
     # directory. backup.sh backs up nothing and reports success; status reports a
     # stack that is running fine as absent.
     #
-    # Five are shell scripts and two are the CLI's own Python entry points, which
+    # Six are shell scripts and two are the CLI's own Python entry points, which
     # is the pairing most likely to be half-done: the shell copies are adjacent
     # and get found together, while cli.py and support.py sit in another tree and
     # drive backup/restore/upgrade/rollback whenever the operator has not exported
@@ -229,6 +229,12 @@ SENTINELS: tuple[Sentinel, ...] = (
         text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-ok: pinned floor string
         kind=LITERAL,
         breaks="the smoke check reports a healthy install as missing",
+    ),
+    Sentinel(
+        path="scripts/set-version.sh",
+        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-ok: pinned floor string
+        kind=LITERAL,
+        breaks="a version bump edits an .env in an empty directory and reports success",
     ),
     Sentinel(
         path="tools/memclawctl/src/memclawctl/cli.py",  # legacy-name-ok: the path of the pinned file

@@ -64,12 +64,13 @@ F="-f docker-compose.yml -f docker-compose.override.yml -f docker-compose.tls-le
 bash scripts/backup.sh
 
 # 2. Bump versions — keep the scheduler images in lockstep with the stack
-# Rewrites whichever spelling this .env carries. A managed box installed
-# before the rename has only MEMCLAW_*, so a CAURA_-only sed would match; legacy-name-ok: names both spellings so the edit works on an .env written before the rename
-# nothing and silently leave the box on its old tag. Both names are read.
-sed -i -E 's/^(CAURA|MEMCLAW)_VERSION=.*/\1_VERSION=vX.Y.Z/' .env  # legacy-name-ok: names both spellings so the edit works on an .env written before the rename
+# Rewrites whichever spelling of the version key this .env carries, and
+# refuses rather than reporting success if it carries neither.
+./scripts/set-version.sh vX.Y.Z
 # Converge the transitional ops-version skew: ops images track the stack.
-sed -i -E 's/^(CAURA|MEMCLAW)_OPS_VERSION=.*/\1_OPS_VERSION=vX.Y.Z/' .env   # or delete the line — BOTH spellings if present — to track the stack version; legacy-name-ok: names both spellings so the edit works on an .env written before the rename
+# A box with no ops-version line at all is already in that state, so this
+# reports it and exits 0 rather than treating it as an error.
+./scripts/set-version.sh --ops vX.Y.Z
 
 # 3. Pull service images — INCLUDING core-operations (and platform-operations if deployed)
 docker compose $F pull core-api core-storage-api platform-admin-api platform-auth-api \
@@ -84,6 +85,12 @@ docker compose $F up -d --force-recreate --no-deps platform-storage-api
 # 6. Bring everything up -> public Alembic + recreates core-storage, core-api, core-operations, ...
 docker compose $F up -d
 ```
+
+> `set-version.sh` ships in the release bundle. On an install that predates it
+> the file will not be there — open `.env` and change the version key by hand
+> instead. It is `CAURA_VERSION`, or the older `MEMCLAW_VERSION` if your file  <!-- legacy-name-ok: teaches the old spelling so an operator recognises which key their file has -->
+> was written before the rename; both are read, and
+> [`env-aliases.md`](env-aliases.md) lists every pair.
 
 **Hard rules (each one bit us):**
 - **Never `--remove-orphans`** — Caddy lives in the TLS overlay and would be killed.

@@ -41,6 +41,7 @@ pytestmark = [pytest.mark.unit]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+EXEMPT_MARKER = "legacy-name-ok"  # the ratchet's own marker, spelled once
 OLD_PREFIX = "MEMCLAW_"  # legacy-name-ok: the prefix this test exists to pair up
 NEW_PREFIX = "CAURA_"
 
@@ -1127,3 +1128,216 @@ def test_the_shipped_env_example_resolves_every_image_tag(tmp_path):
             f"{name} resolved to {tag!r}, not the version the template pins "
             f"({pinned!r}) — the template does not work as its header says"
         )
+
+
+def test_no_exemption_marker_is_visible_to_a_doc_reader():
+    """Markers belong in the source, not on the rendered page.
+
+    The ratchet's exemption marker has to sit on the same line as the name it
+    excuses. In markdown that is fine everywhere except inside a ``` fence,
+    which renders its contents literally — so a marker there puts an internal CI
+    token in the middle of customer-facing prose. Outside a fence an HTML
+    comment carries it invisibly, and GitHub strips one out of a raw <pre> block
+    before it reaches the page, which is how the worked example in the alias
+    table keeps both its old-name line and a clean rendering.
+
+    Checked structurally rather than by rendering, so it needs no network: the
+    fence is what makes a marker visible, and the fence is visible from here.
+    """
+    offenders = []
+    for path in sorted(REPO_ROOT.rglob("*.md")):
+        if ".git" in path.parts:
+            continue
+        fenced = False
+        for lineno, line in enumerate(
+            path.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+        ):
+            if line.strip().startswith("```"):
+                fenced = not fenced
+                continue
+            if fenced and EXEMPT_MARKER in line:
+                rel = path.relative_to(REPO_ROOT)
+                offenders.append(f"{rel}:{lineno}: {line.strip()[:90]}")
+    assert not offenders, (
+        "these render an exemption marker as literal text to the reader — move "
+        "the line out of the fence (a raw <pre> block takes an HTML comment "
+        "that GitHub strips):\n" + "\n".join(offenders)
+    )
+
+
+# ── scripts/set-version.sh ───────────────────────────────────────────────────
+#
+# The runbooks call this instead of spelling a sed. Its whole reason for
+# existing is the case a hand-typed sed made silent, so that case is tested
+# first: neither spelling present must REFUSE, not report success.
+
+SET_VERSION = "scripts/set-version.sh"
+
+
+def _set_version(tmp_path: Path, env_body: str, *args: str):
+    home = tmp_path / "install"
+    home.mkdir(exist_ok=True)
+    (home / ".env").write_text(env_body, encoding="utf-8")
+    proc = subprocess.run(
+        ["bash", str(REPO_ROOT / SET_VERSION), "--home", str(home), *args],
+        capture_output=True, text=True, env={"PATH": os.environ["PATH"]}, check=False,
+    )
+    return proc, _keys((home / ".env").read_text(encoding="utf-8"))
+
+
+def test_set_version_refuses_when_no_version_key_is_present(tmp_path):
+    """The silent no-op, made loud. This is the point of the script."""
+    proc, keys = _set_version(tmp_path, "FOO=bar\n", "v1.1.0")
+    assert proc.returncode != 0, "reported success on an .env with no version key"
+    assert "No version key" in proc.stderr, proc.stderr
+    assert "CAURA_VERSION" not in keys and "MEMCLAW_VERSION" not in keys  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+
+
+@pytest.mark.parametrize(
+    ("body", "expect"),
+    [
+        ("MEMCLAW_VERSION=v1.0.0\n", {"MEMCLAW_VERSION": "v1.1.0"}),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        ("CAURA_VERSION=v1.0.0\n", {"CAURA_VERSION": "v1.1.0"}),
+        ("CAURA_VERSION=v1.0.0\nMEMCLAW_VERSION=v1.0.0\n",  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+         {"CAURA_VERSION": "v1.1.0", "MEMCLAW_VERSION": "v1.1.0"}),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        ("CAURA_VERSION=\nMEMCLAW_VERSION=v1.0.0\n",  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+         {"CAURA_VERSION": "v1.1.0", "MEMCLAW_VERSION": "v1.1.0"}),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    ],
+)
+def test_set_version_moves_whichever_spellings_the_file_has(tmp_path, body, expect):
+    """Including the pair together — Compose reads the newer name first, so a
+    half-moved pair resolves to the stale one."""
+    proc, keys = _set_version(tmp_path, body, "v1.1.0")
+    assert proc.returncode == 0, proc.stderr
+    for key, want in expect.items():
+        assert keys[key] == want, f"{key}={keys[key]!r}, expected {want!r}"
+
+
+def test_set_version_never_introduces_the_other_spelling(tmp_path):
+    """An .env with one spelling comes out with one spelling."""
+    _, keys = _set_version(tmp_path, "MEMCLAW_VERSION=v1.0.0\n", "v1.1.0")  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    assert "CAURA_VERSION" not in keys, "an upgrade must not add the new spelling"
+
+
+def test_set_version_ops_flag_leaves_the_stack_version_alone(tmp_path):
+    body = "MEMCLAW_OPS_VERSION=v1.0.0\nMEMCLAW_VERSION=v1.0.0\n"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    proc, keys = _set_version(tmp_path, body, "--ops", "v2.0.0")
+    assert proc.returncode == 0, proc.stderr
+    assert keys["MEMCLAW_OPS_VERSION"] == "v2.0.0"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    assert keys["MEMCLAW_VERSION"] == "v1.0.0", "--ops moved the stack version too"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+
+
+def test_the_runbooks_call_the_script_rather_than_spelling_a_sed():
+    """What actually removed the markers, so it should not quietly come back."""
+    for rel in ("docs/upgrade.md", "docs/upgrade-runbook-operator.md"):
+        body = _read(rel)
+        assert "set-version.sh" in body, f"{rel} no longer calls the script"
+        bad = [
+            f"{rel}:{n}: {ln.strip()[:80]}"
+            for n, ln in enumerate(body.splitlines(), 1)
+            if "sed" in ln and re.search(r"_VERSION=", ln)
+        ]
+        assert not bad, "a hand-typed version sed came back:\n" + "\n".join(bad)
+
+
+def test_runbooks_calling_the_script_say_what_to_do_without_it():
+    """set-version.sh reaches a box only with a bundle refresh.
+
+    Neither manual upgrade path refreshes the bundle before the version step —
+    the connected one goes backup, set version, pull, up — so on any install
+    created before the script existed the file is simply not in
+    $CAURA_HOME/scripts/ and the documented command dies on the second step.
+    Every runbook that calls it therefore has to say what to do instead, and the
+    fallback has to be a hand edit rather than another anchored command: the
+    airgapped path has no network to fetch the bundle over.
+    """
+    for rel in ("docs/upgrade.md", "docs/upgrade-runbook-operator.md"):
+        body = _read(rel)
+        if "set-version.sh" not in body:
+            continue
+        note = [
+            ln for ln in body.splitlines() if ln.lstrip().startswith(">")
+        ]
+        joined = "\n".join(note)
+        assert "ships in the release bundle" in joined, (
+            f"{rel} calls set-version.sh without saying it is absent on an "
+            "install that predates it"
+        )
+        # Scoped to the note, not the file. The operator runbook links the table
+        # from its gotchas list too, so a file-wide check passes even with the
+        # note's own link removed -- which it did, until this was tightened.
+        assert "env-aliases.md" in joined, (
+            f"{rel} tells the operator to hand-edit the version key without "
+            "pointing at the table of which spellings are read"
+        )
+
+
+@pytest.mark.parametrize(
+    "bad", ["v1&BAD", "a/b", "v1.2.3; rm -rf /", "v" * 200, "!nope"]
+)
+def test_set_version_refuses_a_version_that_is_not_a_legal_tag(tmp_path, bad):
+    """Refuse, rather than escape, and never corrupt while reporting success.
+
+    `&` is sed's whole-match backreference on the replacement side, so an
+    unescaped one spliced the ENTIRE matched line back into the value and still
+    exited 0 — the silent-corruption class this script exists to remove,
+    reintroduced one layer down. Escaping would make it safe; refusing also
+    catches the typo or half-pasted argument that produced it.
+    """
+    body = "MEMCLAW_VERSION=v1.0.0\n"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    proc, keys = _set_version(tmp_path, body, bad)
+    assert proc.returncode != 0, f"accepted {bad!r}"
+    assert keys["MEMCLAW_VERSION"] == "v1.0.0", (  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        f"{bad!r} changed the file before being rejected: {keys}"
+    )
+
+
+@pytest.mark.parametrize("good", ["v1.2.3", "v1.2.3-rc1", "latest", "2026.08.24_1"])
+def test_set_version_accepts_a_legal_tag(tmp_path, good):
+    """The refusal must not be so tight it rejects real release tags."""
+    proc, keys = _set_version(tmp_path, "MEMCLAW_VERSION=v1.0.0\n", good)  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    assert proc.returncode == 0, proc.stderr
+    assert keys["MEMCLAW_VERSION"] == good  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+
+
+def test_set_version_error_messages_do_not_carry_the_exit_code(tmp_path):
+    """`die()` printed "$*", so the exit code $2 landed inside the message."""
+    proc, _ = _set_version(tmp_path, "FOO=bar\n", "v1.1.0")
+    assert proc.returncode != 0
+    msg = proc.stderr.strip().splitlines()[-1]
+    assert not re.search(r"\s\d\s*$", msg), f"exit code leaked into the message: {msg!r}"
+
+
+def test_set_version_help_does_not_print_the_shebang():
+    """`sed 's/^# //'` over line 1 turns the shebang into `!/usr/bin/env bash`."""
+    proc = subprocess.run(
+        ["bash", str(REPO_ROOT / SET_VERSION), "--help"],
+        capture_output=True, text=True, env={"PATH": os.environ["PATH"]}, check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    first = proc.stdout.splitlines()[0]
+    assert "usr/bin/env" not in first, f"--help starts with the shebang: {first!r}"
+    assert first.strip(), "--help starts with a blank line"
+
+
+def test_set_version_ops_is_a_no_op_when_the_key_is_absent(tmp_path):
+    """No ops-version line is a SUPPORTED state, not a failure.
+
+    Deleting the key is the documented way to make the scheduler images track
+    the stack version — with it absent, Compose falls through to the stack tag
+    on its own. So the runbook step that runs `--ops` is already satisfied on
+    such a box, and refusing would abort a documented upgrade at step 2 over an
+    install that is already correct.
+
+    The opposite of test_set_version_refuses_when_no_version_key_is_present, and
+    the pair is the point: absent means "fine" for one key and "broken" for the
+    other, so the script cannot treat them alike.
+    """
+    proc, keys = _set_version(tmp_path, "MEMCLAW_VERSION=v1.0.0\n", "--ops", "v2.0.0")  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    assert proc.returncode == 0, f"refused a supported state: {proc.stderr}"
+    assert "tracking the stack version" in proc.stderr, (
+        f"exited 0 but said nothing about why: {proc.stderr!r}"
+    )
+    assert "CAURA_OPS_VERSION" not in keys and "MEMCLAW_OPS_VERSION" not in keys, (  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        "a no-op must not introduce the key it did not find"
+    )
