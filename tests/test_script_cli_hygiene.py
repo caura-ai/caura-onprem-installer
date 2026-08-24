@@ -33,12 +33,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Every shipped script with a --help and a die(). smoke-connected.sh has
 # neither; the verify scripts are not operator entry points.
-#
-# scripts/set-version.sh is deliberately absent: it carries the same two fixes
-# and its own tests, in the PR that introduces it. Listing it here while it does
-# not exist on this branch produced four silent skips, and a skipped test reads
-# as coverage. Add it here when both have landed.
-ENTRY_POINTS = ("install.sh", "upgrade.sh")
+ENTRY_POINTS = ("install.sh", "upgrade.sh", "scripts/set-version.sh")
+
+# Only the ones that actually define warn(), derived rather than listed.
+# set-version.sh has a die() but no warn(), so putting it in the list below
+# would add a parametrised case whose loop body never runs — green, and
+# checking nothing. Deriving the list also means a script that grows a warn()
+# is covered without anyone remembering to add it.
+WARN_DEFINERS = tuple(
+    rel
+    for rel in ENTRY_POINTS
+    if re.search(r"^\s*warn\(\)", (REPO_ROOT / rel).read_text(encoding="utf-8"), re.M)
+)
 
 
 def _run(rel: str, *args: str) -> subprocess.CompletedProcess:
@@ -88,7 +94,15 @@ def test_die_does_not_append_the_exit_code_to_the_message(rel):
     )
 
 
-@pytest.mark.parametrize("rel", ENTRY_POINTS)
+def test_the_warn_definer_list_is_not_empty():
+    """Derived lists can derive to nothing; then the test below checks nobody."""
+    assert WARN_DEFINERS, (
+        "no script defines warn() any more — either that is wrong, or the "
+        "assertion below has quietly stopped protecting anything"
+    )
+
+
+@pytest.mark.parametrize("rel", WARN_DEFINERS)
 def test_warn_keeps_joining_all_its_arguments(rel):
     """The counterpart, and the reason die() could not just be swept.
 
