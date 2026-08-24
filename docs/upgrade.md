@@ -36,10 +36,8 @@ cd /opt/memclaw
 # 1. Take a safety backup
 ./scripts/backup.sh
 
-# 2. Pick the target version. This rewrites whichever spelling your .env
-#    carries. Anchoring on the new name alone would match nothing on a file
-#    written before the rename — no error, and you stay on the old tag.
-sed -i -E 's/^(CAURA|MEMCLAW)_VERSION=.*/\1_VERSION=v1.1.0/' .env  # legacy-name-ok: names both spellings so the edit works on an .env written before the rename
+# 2. Pick the target version
+./scripts/set-version.sh v1.1.0
 
 # 3. Pull + roll
 docker compose pull
@@ -49,6 +47,12 @@ docker compose up -d
 docker compose logs -f platform-storage-api
 # → look for "alembic upgrade head" and "Application startup complete"
 ```
+
+> `set-version.sh` ships in the release bundle. On an install that predates it
+> the file will not be there — open `.env` and change the version key by hand
+> instead. It is `CAURA_VERSION`, or the older `MEMCLAW_VERSION` if your file  <!-- legacy-name-ok: teaches the old spelling so an operator recognises which key their file has -->
+> was written before the rename; both are read, and
+> [`env-aliases.md`](env-aliases.md) lists every pair.
 
 Migrations auto-run on `platform-storage-api` startup (idempotent — the
 runner is safe to re-invoke on restart). Other services won't accept
@@ -66,7 +70,7 @@ Identical flow, with two extra steps at the front:
 #      airgap overlay resolves to locally-loaded tags.
 cd /opt/memclaw
 ./scripts/backup.sh
-sed -i -E 's/^(CAURA|MEMCLAW)_VERSION=.*/\1_VERSION=v1.1.0/' .env  # legacy-name-ok: names both spellings so the edit works on an .env written before the rename
+./scripts/set-version.sh v1.1.0
 docker compose -f docker-compose.yml -f docker-compose.airgap.yml up -d
 ```
 
@@ -103,7 +107,7 @@ docker compose ps
 
 ```bash
 cd /opt/memclaw
-sed -i -E 's/^(CAURA|MEMCLAW)_VERSION=.*/\1_VERSION=v1.0.0/' .env   # old tag; legacy-name-ok: names both spellings so the edit works on an .env written before the rename
+./scripts/set-version.sh v1.0.0   # old tag
 docker compose up -d
 ```
 

@@ -62,6 +62,7 @@ spellings is [`docs/env-aliases.md`](docs/env-aliases.md).
 ├── scripts/
 │   ├── backup.sh               # pg_dump + redis BGSAVE
 │   ├── restore.sh              # pair to backup.sh
+│   ├── set-version.sh          # bump the pinned image tag in an install's .env
 │   └── verify/                 # end-to-end smoke scripts
 └── docs/
     ├── install.md

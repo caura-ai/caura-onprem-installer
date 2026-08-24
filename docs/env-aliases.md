@@ -18,10 +18,15 @@ files you edit by hand. Part-way through adopting the new spelling, the ordinary
 state of such a file is a new name present and blank next to an old one that
 still has the value in it:
 
-```dotenv
-CAURA_VERSION=            # started migrating, not filled in yet
-MEMCLAW_VERSION=v2.8.4    # what the stack is actually running; legacy-name-ok: this table's worked example
-```
+<!-- A raw <pre> block rather than a fenced one, deliberately. This example has
+     to spell the old name, so the line needs the ratchet's exemption marker —
+     and inside a ``` fence that marker renders to the reader as literal text,
+     which put an internal CI token in the middle of customer-facing prose.
+     GitHub strips an HTML comment out of a raw <pre> before it reaches the
+     page, so here the marker is invisible where it has to be. -->
+<pre><code>CAURA_VERSION=            # started migrating, not filled in yet
+MEMCLAW_VERSION=v2.8.4    # what the stack is actually running<!-- legacy-name-ok: this table's worked example -->
+</code></pre>
 
 The stack runs `v2.8.4`. A blank never wins, and it never silently blanks a
 setting that was working. If both are filled, the `CAURA_*` one wins. If neither
