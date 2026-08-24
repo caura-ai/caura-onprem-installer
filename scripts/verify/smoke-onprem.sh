@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Post-install smoke test for MemClaw on-prem deployments.
+# Post-install smoke test for Caura on-prem deployments.
 #
 # Exits 0 on success, non-zero with an indicative code on failure.
 # Safe to run repeatedly — creates temporary memories + agents tagged

@@ -3,7 +3,7 @@
 #
 # Two output flavours:
 #   1. HTTP-only (default) — listen 80, no TLS. Customers either run
-#      MemClaw on a private network or front it with their own TLS
+#      Caura on a private network or front it with their own TLS
 #      terminator. Renders from memclaw.conf.template.
 #   2. HTTP+TLS — when /etc/nginx/tls/cert.pem + /etc/nginx/tls/key.pem
 #      are mounted (install.sh --tls-cert / --tls-self-signed paths).

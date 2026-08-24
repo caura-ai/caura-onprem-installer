@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MemClaw on-prem restore script — pair to backup.sh.
+# Caura on-prem restore script — pair to backup.sh.
 #
 # Usage:
 #   ./restore.sh /path/to/memclaw-backup-<ts>.tar.gz

@@ -1,6 +1,6 @@
 # Install guide (connected)
 
-This guide walks you through installing MemClaw Enterprise on a
+This guide walks you through installing Caura Enterprise on a
 customer-managed VM with outbound internet access. For air-gapped
 installs see `install-airgap.md`.
 
@@ -38,7 +38,7 @@ when upgrading (see `upgrade.md`).
 
 ## Embedding provider
 
-MemClaw needs an embedding backend for semantic recall:
+Caura needs an embedding backend for semantic recall:
 
 - **Connected (recommended):** set `EMBEDDING_PROVIDER=openai` (or
   anthropic / gemini) and provide the matching API key in `.env`. Memory

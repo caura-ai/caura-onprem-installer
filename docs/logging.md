@@ -1,6 +1,6 @@
 # Logging & support bundles
 
-On-prem MemClaw writes structured JSON logs to two places:
+On-prem Caura writes structured JSON logs to two places:
 
 - **stdout** of each container — captured by `docker compose logs` and
   anything your log shipper (Loki, Promtail, Filebeat, cloud agent) is

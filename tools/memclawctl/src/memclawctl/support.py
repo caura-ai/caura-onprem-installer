@@ -1,4 +1,4 @@
-"""Support-bundle collection for on-prem MemClaw deployments.
+"""Support-bundle collection for on-prem Caura deployments.
 
 A support bundle is a redacted tarball containing everything a Caura
 support engineer needs to triage an incident without shell access:

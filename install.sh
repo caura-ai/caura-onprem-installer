@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MemClaw Enterprise — on-prem installer.
+# Caura Enterprise — on-prem installer.
 #
 # Usage:
 #   curl -sL https://onprem.caura.ai/install.sh | bash          (zero-config)
@@ -576,7 +576,7 @@ EOF
       # local probes / k8s liveness checks don't trip cert mismatches.
       _san="DNS:$cn,DNS:localhost,IP:127.0.0.1"
       openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
-        -subj "/CN=$cn/O=MemClaw On-Prem" \
+        -subj "/CN=$cn/O=Caura On-Prem" \
         -addext "subjectAltName=$_san" \
         -keyout "$MEMCLAW_HOME/tls/key.pem" \
         -out    "$MEMCLAW_HOME/tls/cert.pem" \
@@ -883,11 +883,11 @@ if [ "$SKIP_ADMIN" != "true" ] && [ "$NON_INTERACTIVE" = "true" ]; then
   cat > "$MEMCLAW_HOME/install-result.json" <<EOF
 {"url": "${URL}", "admin_email": "${ADMIN_EMAIL}", "api_key": "${API_KEY}"}
 EOF
-  printf '\n\033[32m=== MemClaw Install Complete ===\033[0m\n'
+  printf '\n\033[32m=== Caura Install Complete ===\033[0m\n'
   printf 'url:     %s\n' "$URL"
   printf 'admin:   %s\n' "$ADMIN_EMAIL"
   printf 'api_key: %s  (printed once — store it)\n' "$API_KEY"
 else
-  printf '\n\033[32m=== MemClaw is running ===\033[0m\n'
+  printf '\n\033[32m=== Caura is running ===\033[0m\n'
   printf 'Visit %s/setup to upload your license and create the first admin.\n' "$URL"
 fi
