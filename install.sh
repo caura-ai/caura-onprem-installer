@@ -120,14 +120,18 @@ BIND_ADDRESS="${CAURA_BIND_ADDRESS:-$BIND_ADDRESS}"
 # ── Helpers ─────────────────────────────────────────────────────────────────
 log()   { printf '\033[36m==>\033[0m %s\n' "$*"; }
 warn()  { printf '\033[33m!!\033[0m  %s\n' "$*" >&2; }
-die()   { printf '\033[31mERROR\033[0m %s\n' "$*" >&2; exit "${2:-1}"; }
+# "$1", not "$*". Every call site passes the exit code as $2, and "$*" joined it
+# into the printed text — "ERROR Unknown flag: --bogus 2". warn() above keeps
+# "$*" on purpose: it takes no exit code, and one call passes three separate
+# message arguments.
+die()   { printf '\033[31mERROR\033[0m %s\n' "$1" >&2; exit "${2:-1}"; }
 
 read_file() { [ -n "${1:-}" ] && [ -f "$1" ] && cat "$1"; }
 random_hex() { head -c "$1" /dev/urandom | xxd -p -c "$1"; }
 
 # ── Parse CLI flags ────────────────────────────────────────────────────────
 usage() {
-  sed -n 's/^# \{0,1\}//;1,/^$/p' "$0" | head -n 40
+  sed -n '2,/^$/{s/^# \{0,1\}//;p;}' "$0" | head -n 40
   exit 0
 }
 

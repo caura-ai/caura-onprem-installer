@@ -101,7 +101,8 @@ SERVICES=(
 # ── Helpers ─────────────────────────────────────────────────────────────────
 log()  { printf '\033[36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m!!\033[0m  %s\n' "$*" >&2; }
-die()  { printf '\033[31mERROR\033[0m %s\n' "$*" >&2; exit "${2:-1}"; }
+# "$1", not "$*" — see the same note in install.sh. warn() keeps "$*".
+die()  { printf '\033[31mERROR\033[0m %s\n' "$1" >&2; exit "${2:-1}"; }
 
 # Parse --to value or fall back to `:latest` pointer.
 resolve_target_version() {
@@ -151,7 +152,7 @@ while [ $# -gt 0 ]; do
     --health-timeout) HEALTH_TIMEOUT_S="$2"; shift 2 ;;
     --bundle-url) BUNDLE_URL="$2";           shift 2 ;;
     -h|--help)
-      sed -n 's/^# \{0,1\}//;1,/^$/p' "$0" | head -n 45
+      sed -n '2,/^$/{s/^# \{0,1\}//;p;}' "$0" | head -n 45
       exit 0 ;;
     *) die "Unknown flag: $1" 2 ;;
   esac

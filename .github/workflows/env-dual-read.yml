@@ -54,8 +54,14 @@ jobs:
           python -m pip install --disable-pip-version-check --quiet 'pytest>=9.1.1,<10.0'
           python -m pip install --disable-pip-version-check --quiet ./tools/memclawctl  # legacy-name-ok: the path of the shipped CLI, which is floor
 
-      - name: Both spellings are read, and blank never wins
-        run: python -m pytest tests/test_env_dual_read.py -q
+      # The whole directory, not one named file. Every other workflow here runs
+      # exactly one test file by name, so a test file added to tests/ ran
+      # nowhere — tests/test_script_cli_hygiene.py was written, passed locally
+      # and would never have executed in CI. The gate workflows still run their
+      # own file first, which is the point of those steps; the overlap is under
+      # a second and buys a directory that cannot silently go unrun.
+      - name: Tests
+        run: python -m pytest tests/ -q
 
       # This repo runs no general test job, so the CLI's own suite has never had
       # one. Phase 5.3 edits cli.py and support.py, which makes that gap load
