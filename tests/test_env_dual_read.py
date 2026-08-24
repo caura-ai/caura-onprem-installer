@@ -273,10 +273,21 @@ _DEFAULTS = _extract_block(
     "# ── Helpers ─────────────────────────────────────────────────────────────────",
 )
 
+# The six knobs with a non-empty default have theirs applied AFTER the config
+# file, so that one `[ -z "$VAR" ]` guard is correct for every key and the code
+# runs in the order the header documents. Resolution is therefore two blocks,
+# and a test that ran only the first would report every one of them as empty.
+_APPLY_DEFAULTS = _extract_block(
+    "install.sh",
+    "# ── Apply defaults ─────────────────────────────────────────────────────────",
+    "# Re-export in MEMCLAW_* form so sudo -E preserves them into the child.",  # legacy-name-ok: test anchors on the old spelling, which rule 3 keeps working
+)
+
 
 def _resolve_defaults(env: dict[str, str], var: str) -> str:
     return _run_bash(
-        f'set -euo pipefail\n{_DEFAULTS}\nprintf "%s" "${var}"', {"PATH": os.environ["PATH"], **env}
+        f'set -euo pipefail\n{_DEFAULTS}\n{_APPLY_DEFAULTS}\nprintf "%s" "${var}"',
+        {"PATH": os.environ["PATH"], **env},
     )
 
 
@@ -318,45 +329,60 @@ def test_new_name_alone_is_enough():
 # -- install.sh: the embedding auto-flip guard --------------------------------
 
 
-def test_explicit_new_name_provider_is_not_overridden_by_the_openai_autoflip():
-    """The auto-flip must see an explicit choice made under either spelling.
+@pytest.mark.parametrize(
+    ("label", "env", "flags", "conf"),
+    [
+        ("new-name env var", {"CAURA_EMBEDDING_PROVIDER": "local"}, [], ""),
+        ("old-name env var", {"MEMCLAW_EMBEDDING_PROVIDER": "local"}, [], ""),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        ("--embedding-provider flag", {}, ["--embedding-provider", "local"], ""),
+        ("install.conf key", {}, [], 'embedding_provider = "local"\n'),
+    ],
+)
+def test_an_explicit_provider_survives_the_openai_autoflip(tmp_path, label, env, flags, conf):
+    """install.sh flips EMBEDDING_PROVIDER to openai when a key is present AND
+    the operator named no provider. "Named none" has to mean none from ANY
+    source.
 
-    install.sh flips EMBEDDING_PROVIDER from "local" to "openai" when an OpenAI
-    key is present AND the operator did not name a provider. Testing only the
-    old name reads an explicit new-name choice as "not set" and overwrites it —
-    the operator asks for local embeddings and silently gets their key spent on
-    OpenAI instead.
+    It used to ask only the environment, so `--embedding-provider local` and an
+    install.conf key were both read as "unset" — the operator asked for local
+    embeddings and had their OpenAI key spent instead. Driven through the real
+    blocks rather than by scraping the guard's text, so the assertion survives
+    the guard being rewritten.
     """
-    guard = [
-        ln
-        for ln in _read("install.sh").splitlines()
-        if "EMBEDDING_PROVIDER:-}" in ln and "-z " in ln
-    ]
-    assert len(guard) == 1, f"expected one auto-flip guard, found {guard}"
-    assert "CAURA_EMBEDDING_PROVIDER" in guard[0], (
-        "the auto-flip tests only the old spelling, so an explicit "
-        "CAURA_EMBEDDING_PROVIDER=local is read as unset and overridden"
-    )
-    script = f'set -euo pipefail\nEMBEDDING_PROVIDER=local\nOPENAI_API_KEY=sk-x\n{guard[0].strip().rstrip(" \\\\")}\n  echo FLIPPED\nfi\necho "provider=$EMBEDDING_PROVIDER"'
-    # Reconstructed as a standalone `if` so the guard line itself is executed.
+    conf_path = tmp_path / "install.conf"
+    conf_path.write_text(conf or "hostname = \"x\"\n", encoding="utf-8")
     script = (
-        "set -euo pipefail\n"
-        "EMBEDDING_PROVIDER=local\n"
-        "OPENAI_API_KEY=sk-x\n"
-        'if [ -n "${OPENAI_API_KEY:-}" ] \\\n'
-        '   && [ "${EMBEDDING_PROVIDER}" = "local" ] \\\n'
-        f"{guard[0]}\n"
-        '  EMBEDDING_PROVIDER="openai"\n'
-        "fi\n"
-        'printf "%s" "$EMBEDDING_PROVIDER"'
+        "set -uo pipefail\n"
+        "log() { :; }\nwarn() { :; }\ndie() { echo \"DIE: $1\" >&2; exit 1; }\n"
+        "usage() { exit 0; }\n"
+        f"{_DEFAULTS}\n"
+        f"{_extract_block('install.sh', '# ── Parse CLI flags ────────────────────────────────────────────────────────', '# ── Apply config file (lower precedence than CLI/env) ──────────────────────')}\n"
+        f"{_extract_block('install.sh', '# ── Apply config file (lower precedence than CLI/env) ──────────────────────', '# ── Apply defaults ─────────────────────────────────────────────────────────')}\n"
+        f"{_APPLY_DEFAULTS}\n"
+        "OPENAI_API_KEY=sk-present\n"
+        + _AUTOFLIP
+        + '\nprintf "%s" "$EMBEDDING_PROVIDER"'
     )
-    env = {"PATH": os.environ["PATH"], "CAURA_EMBEDDING_PROVIDER": "local"}
-    assert _run_bash(script, env) == "local", (
-        "an explicit new-name provider was overridden by the OpenAI auto-flip"
+    argv = ["--config", str(conf_path), *flags]
+    proc = subprocess.run(
+        ["bash", "-c", 'set -- "$@"\n' + script, "_", *argv],
+        capture_output=True, text=True,
+        env={"PATH": os.environ["PATH"], **env}, cwd=REPO_ROOT, check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "local", (
+        f"an explicit provider from {label} was overwritten by the auto-flip "
+        f"(got {proc.stdout!r})"
     )
 
 
 # -- upgrade.sh: the two .env reads -------------------------------------------
+
+_AUTOFLIP = _extract_block(
+    "install.sh",
+    '# Auto-flip the default EMBEDDING_PROVIDER=local to "openai" when the',
+    'ADMIN_PASSWORD_RESOLVED="$ADMIN_PASSWORD"',
+)
 
 _ENV_KEY_FN = _extract_function("upgrade.sh", "_env_key")
 _CURRENT_VERSION_FN = _extract_function("upgrade.sh", "current_version")
@@ -1340,4 +1366,157 @@ def test_set_version_ops_is_a_no_op_when_the_key_is_absent(tmp_path):
     )
     assert "CAURA_OPS_VERSION" not in keys and "MEMCLAW_OPS_VERSION" not in keys, (  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
         "a no-op must not introduce the key it did not find"
+    )
+
+
+# ── install.conf precedence ──────────────────────────────────────────────────
+#
+# install.sh's header documents "CLI flags > env vars > --config file >
+# defaults". Nine of the twenty-two config keys used to invert the top of that:
+# their arms assigned unconditionally, so a stale install.conf silently beat an
+# explicit install-root flag on the same command line.
+#
+# The reason they were unguarded is the trap in the obvious repair. The other
+# thirteen keys default to "", so `[ -z "$VAR" ]` reads as "nothing higher set
+# this". These nine include six with a NON-EMPTY default, and for those the
+# guard could never fire — so copying it onto them does not fix precedence, it
+# stops the key working from the config file at all. The defaults move after the
+# config block instead, which makes one guard correct for all twenty-two.
+
+_FLAGS_BLOCK = _extract_block(
+    "install.sh",
+    "# ── Parse CLI flags ────────────────────────────────────────────────────────",
+    "# ── Apply config file (lower precedence than CLI/env) ──────────────────────",
+)
+_CONF_BLOCK = _extract_block(
+    "install.sh",
+    "# ── Apply config file (lower precedence than CLI/env) ──────────────────────",
+    "# ── Apply defaults ─────────────────────────────────────────────────────────",
+)
+
+# (config key, shell variable, CLI flag or None)
+PRECEDENCE_KEYS = [
+    ("memclaw_home", "MEMCLAW_HOME", "--memclaw-home"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    ("caura_home", "MEMCLAW_HOME", "--memclaw-home"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    ("memclaw_version", "MEMCLAW_VERSION", "--version"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    ("caura_version", "MEMCLAW_VERSION", "--version"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    ("email_provider", "EMAIL_PROVIDER", "--email-provider"),
+    ("embedding_provider", "EMBEDDING_PROVIDER", "--embedding-provider"),
+    ("jwt_secret_file", "JWT_SECRET_FILE", None),
+    ("postgres_password_file", "POSTGRES_PASSWORD_FILE", None),
+    ("core_admin_api_key_file", "CORE_ADMIN_API_KEY_FILE", None),
+    ("offline", "OFFLINE", None),
+    ("skip_admin", "SKIP_ADMIN", None),
+]
+
+_ISOLATE = [
+    f"{p}{n}"
+    for n in (
+        "HOME", "VERSION", "EMAIL_PROVIDER", "EMBEDDING_PROVIDER", "OFFLINE",
+        "SKIP_ADMIN", "JWT_SECRET_FILE", "POSTGRES_PASSWORD_FILE",
+        "CORE_ADMIN_API_KEY_FILE",
+    )
+    for p in (NEW_PREFIX, OLD_PREFIX)
+]
+
+
+def _resolve(tmp_path: Path, conf: str, var: str, *, env=None, flags=()) -> str:
+    """Run the real Defaults -> flags -> config -> defaults chain."""
+    conf_path = tmp_path / "install.conf"
+    conf_path.write_text(conf, encoding="utf-8")
+    script = (
+        "set -uo pipefail\n"
+        "log() { :; }\nwarn() { :; }\ndie() { echo \"DIE: $1\" >&2; exit 1; }\n"
+        "usage() { exit 0; }\n"
+        f"{_DEFAULTS}\n{_FLAGS_BLOCK}\n{_CONF_BLOCK}\n{_APPLY_DEFAULTS}\n"
+        f'printf "%s" "${var}"'
+    )
+    clean = {"PATH": os.environ["PATH"]}
+    clean.update(env or {})
+    proc = subprocess.run(
+        ["bash", "-c", script, "_", "--config", str(conf_path), *flags],
+        capture_output=True, text=True, env=clean, cwd=REPO_ROOT, check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout
+
+
+@pytest.mark.parametrize(("key", "var", "flag"), PRECEDENCE_KEYS)
+def test_the_config_file_still_sets_every_key(tmp_path, key, var, flag):
+    """First: the file must keep working. The naive precedence fix breaks this.
+
+    Copying `[ -z "$VAR" ]` onto a key whose default is already non-empty makes
+    the guard permanently false, so the key silently stops doing anything. This
+    runs before the precedence assertions on purpose — a suite where the config
+    file is inert would pass every one of them.
+    """
+    assert _resolve(tmp_path, f'{key} = "from-conf"\n', var) == "from-conf", (
+        f"{key} no longer sets {var} from install.conf"
+    )
+
+
+@pytest.mark.parametrize(("key", "var", "flag"), PRECEDENCE_KEYS)
+def test_an_environment_variable_beats_the_config_file(tmp_path, key, var, flag):
+    """The documented order, for every key rather than the thirteen that had it."""
+    suffix = var[len(OLD_PREFIX):] if var.startswith(OLD_PREFIX) else var
+    got = _resolve(
+        tmp_path, f'{key} = "from-conf"\n', var,
+        env={f"{NEW_PREFIX}{suffix}": "from-env"},
+    )
+    assert got == "from-env", f"install.conf's {key} overrode the environment"
+
+
+@pytest.mark.parametrize(
+    ("key", "var", "flag"), [k for k in PRECEDENCE_KEYS if k[2] is not None]
+)
+def test_a_cli_flag_beats_the_config_file(tmp_path, key, var, flag):
+    """The inversion this fixes: a stale install.conf silently won."""
+    got = _resolve(tmp_path, f'{key} = "from-conf"\n', var, flags=(flag, "from-flag"))
+    assert got == "from-flag", (
+        f"install.conf's {key} overrode {flag} — the header documents the "
+        "opposite order"
+    )
+
+
+@pytest.mark.parametrize(("key", "var", "flag"), PRECEDENCE_KEYS)
+def test_the_shipped_default_still_lands_when_nothing_sets_the_key(tmp_path, key, var, flag):
+    """Deferring the defaults must not have dropped them."""
+    expected = {
+        "MEMCLAW_HOME": "/opt/memclaw",  # legacy-name-ok: the floor install path
+        "MEMCLAW_VERSION": "v2.8.4",  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        "EMAIL_PROVIDER": "log",
+        "EMBEDDING_PROVIDER": "local",
+        "OFFLINE": "false",
+        "SKIP_ADMIN": "false",
+        "JWT_SECRET_FILE": "",
+        "POSTGRES_PASSWORD_FILE": "",
+        "CORE_ADMIN_API_KEY_FILE": "",
+    }[var]
+    assert _resolve(tmp_path, "hostname = \"x\"\n", var) == expected
+
+
+def test_every_config_arm_is_guarded():
+    """No twenty-third key may be added unguarded.
+
+    Scraped rather than listed: the whole defect was one class of arm being
+    written a different way from the rest, and a hand-maintained list of which
+    arms to check would have the same blind spot.
+    """
+    block = _CONF_BLOCK
+    unguarded = []
+    for line in block.splitlines():
+        m = re.match(r"\s{6}([a-z_]+)\)\s+(.*?);;", line)
+        if not m:
+            continue
+        key, body = m.group(1), m.group(2)
+        if key in ("", "#*"):
+            continue
+        # Either guarded inline, or collected into a _conf_* temporary that the
+        # post-loop resolution guards.
+        if "[ -z " in body or body.strip().startswith("_conf_"):
+            continue
+        unguarded.append(line.strip()[:90])
+    assert not unguarded, (
+        "config arms that assign unconditionally, so install.conf beats a CLI "
+        "flag:\n" + "\n".join(unguarded)
     )
