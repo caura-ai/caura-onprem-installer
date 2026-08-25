@@ -26,7 +26,20 @@ mkdir -p /etc/nginx/snippets
 rm -f /etc/nginx/conf.d/default.conf
 
 # Always render the shared location snippet first.
-envsubst '${SERVER_NAME} ${AUTH_UPSTREAM} ${ADMIN_UPSTREAM} ${CORE_UPSTREAM} ${APP_UPSTREAM} ${CLIENT_MAX_BODY_SIZE}' \
+# Perimeter secret injected as X-Gateway-Secret on requests carrying gateway-
+# resolved identity headers. core-api compares it and rejects the header-trust
+# path without it. No default: an empty value renders an empty header, which
+# core-api reads as "not from the gateway" and 401s. Compose supplies the same
+# value core-api gets.
+if [ -z "${GATEWAY_SHARED_SECRET:-}" ]; then
+    echo "FATAL: GATEWAY_SHARED_SECRET is empty. core-api requires it and will" >&2
+    echo "reject gateway traffic without a matching header. Run upgrade.sh (it" >&2
+    echo "backfills the key) or add it to .env, then recreate the stack." >&2
+    exit 1
+fi
+export GATEWAY_SHARED_SECRET
+
+envsubst '${SERVER_NAME} ${AUTH_UPSTREAM} ${ADMIN_UPSTREAM} ${CORE_UPSTREAM} ${APP_UPSTREAM} ${CLIENT_MAX_BODY_SIZE} ${GATEWAY_SHARED_SECRET}' \
     < /etc/nginx/templates/memclaw-locations.template \
     > /etc/nginx/snippets/memclaw-locations.conf
 
@@ -38,7 +51,7 @@ else
     TEMPLATE="/etc/nginx/templates/memclaw.conf.template"
 fi
 
-envsubst '${SERVER_NAME} ${AUTH_UPSTREAM} ${ADMIN_UPSTREAM} ${CORE_UPSTREAM} ${APP_UPSTREAM} ${CLIENT_MAX_BODY_SIZE}' \
+envsubst '${SERVER_NAME} ${AUTH_UPSTREAM} ${ADMIN_UPSTREAM} ${CORE_UPSTREAM} ${APP_UPSTREAM} ${CLIENT_MAX_BODY_SIZE} ${GATEWAY_SHARED_SECRET}' \
     < "$TEMPLATE" \
     > /etc/nginx/conf.d/default.conf
 

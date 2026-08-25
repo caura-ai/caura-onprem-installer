@@ -387,6 +387,13 @@ if [ -z "${SETTINGS_ENCRYPTION_KEY:-}" ]; then
   [ -n "${SETTINGS_ENCRYPTION_KEY:-}" ] || SETTINGS_ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')
 fi
 
+# Perimeter secret for the gateway -> core-api/admin-api header-trust hop.
+# Required in production from backend-2.28.0 (OSS caura#802) — core-api will
+# not start without it; the gateway injects it as X-Gateway-Secret and core-api
+# compares it. 64 hex chars; generate one if the caller did not supply it.
+GATEWAY_SHARED_SECRET="${GATEWAY_SHARED_SECRET:-}"
+[ -n "${GATEWAY_SHARED_SECRET:-}" ] || GATEWAY_SHARED_SECRET=$(random_hex 32)
+
 OPENAI_API_KEY=$(read_file "$OPENAI_API_KEY_FILE" || true)
 
 # Auto-flip the default EMBEDDING_PROVIDER=local to "openai" when the
@@ -698,6 +705,7 @@ POSTGRES_USER=${POSTGRES_USER}
 POSTGRES_DB=${POSTGRES_DB}
 POSTGRES_REQUIRE_SSL=${POSTGRES_REQUIRE_SSL}
 SETTINGS_ENCRYPTION_KEY=${SETTINGS_ENCRYPTION_KEY}
+GATEWAY_SHARED_SECRET=${GATEWAY_SHARED_SECRET}
 EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
 OPENAI_API_KEY=${OPENAI_API_KEY}
 EMAIL_PROVIDER=${EMAIL_PROVIDER}
