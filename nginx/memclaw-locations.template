@@ -127,6 +127,9 @@ location ^~ /api/keys {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Tenant-ID $tenant_id;
+    # Proves these identity headers came from the gateway, not a direct caller on
+    # the Docker network. core-api 401s the header-trust path on a mismatch.
+    proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
@@ -147,6 +150,9 @@ location ^~ /api/agent-keys {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Tenant-ID $tenant_id;
+    # Proves these identity headers came from the gateway, not a direct caller on
+    # the Docker network. core-api 401s the header-trust path on a mismatch.
+    proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
@@ -177,6 +183,9 @@ location ~ ^/api/(admin|superadmin|orgs|usage|security-audit|tenants|billing)(/|
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Tenant-ID $tenant_id;
+    # Proves these identity headers came from the gateway, not a direct caller on
+    # the Docker network. core-api 401s the header-trust path on a mismatch.
+    proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
@@ -203,6 +212,9 @@ location ~ ^/api/v1/(admin|superadmin|billing|usage|orgs)(/|$) {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Tenant-ID $tenant_id;
+    # Proves these identity headers came from the gateway, not a direct caller on
+    # the Docker network. core-api 401s the header-trust path on a mismatch.
+    proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
@@ -226,6 +238,9 @@ location ~ ^/api/(memories|search|recall|entities|relations|fleet|documents|evol
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Tenant-ID $tenant_id;
+    # Proves these identity headers came from the gateway, not a direct caller on
+    # the Docker network. core-api 401s the header-trust path on a mismatch.
+    proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Agent-Id $agent_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
@@ -278,6 +293,9 @@ location = /mcp {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Tenant-ID $tenant_id;
+    # Proves these identity headers came from the gateway, not a direct caller on
+    # the Docker network. core-api 401s the header-trust path on a mismatch.
+    proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-Agent-Id $agent_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
@@ -302,6 +320,9 @@ location /mcp/ {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Tenant-ID $tenant_id;
+    # Proves these identity headers came from the gateway, not a direct caller on
+    # the Docker network. core-api 401s the header-trust path on a mismatch.
+    proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-Agent-Id $agent_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
@@ -332,6 +353,9 @@ location /api/ {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Tenant-ID $tenant_id;
+    # Proves these identity headers came from the gateway, not a direct caller on
+    # the Docker network. core-api 401s the header-trust path on a mismatch.
+    proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Agent-Id $agent_id;
     proxy_set_header X-Org-Read-Only $org_read_only;

@@ -125,6 +125,10 @@ services:
       # /api/v1/org-lifecycle/fanout/*) that platform-operations POSTs to.
       # Must equal the value on the platform-operations service.
       PLATFORM_OPERATIONS_INTERNAL_TOKEN: "${PLATFORM_OPERATIONS_INTERNAL_TOKEN:?install.sh generates this}"
+      # Perimeter for the gateway header-trust path (OSS caura#802). The gateway
+      # injects this as X-Gateway-Secret; core-api/admin-api compare it. Required
+      # in production from backend-2.28.0. Same value across the three services.
+      GATEWAY_SHARED_SECRET: "${GATEWAY_SHARED_SECRET:?install.sh or upgrade.sh generates this}"
       JWT_SECRET: "${JWT_SECRET}"
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -271,6 +275,10 @@ services:
       # via an override, which upgrade.sh dropped on recreate — the durability
       # bug this line fixes.)
       RESERVED_AGENT_ID_POLICY: "${RESERVED_AGENT_ID_POLICY:-warn}"
+      # Perimeter for the gateway header-trust path (OSS caura#802). The gateway
+      # injects this as X-Gateway-Secret; core-api/admin-api compare it. Required
+      # in production from backend-2.28.0. Same value across the three services.
+      GATEWAY_SHARED_SECRET: "${GATEWAY_SHARED_SECRET:?install.sh or upgrade.sh generates this}"
       ADMIN_API_KEY: "${CORE_ADMIN_API_KEY}"
       # core-api in ENVIRONMENT=production refuses to start without these.
       JWT_SECRET: "${JWT_SECRET}"
@@ -337,6 +345,10 @@ services:
       ADMIN_UPSTREAM: platform-admin-api:8001
       CORE_UPSTREAM: core-api:8000
       APP_UPSTREAM: app-frontend:3000
+      # Perimeter for the gateway header-trust path (OSS caura#802). The gateway
+      # injects this as X-Gateway-Secret; core-api/admin-api compare it. Required
+      # in production from backend-2.28.0. Same value across the three services.
+      GATEWAY_SHARED_SECRET: "${GATEWAY_SHARED_SECRET:?install.sh or upgrade.sh generates this}"
     volumes:
       - ./logs/gateway:/var/log/nginx
       # Bind-mount tls/ if it exists; nginx entrypoint checks for

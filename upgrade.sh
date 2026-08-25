@@ -354,6 +354,25 @@ _rollback() {
   exit 4
 }
 
+# ── Backfill required secrets ───────────────────────────────────────────────
+# GATEWAY_SHARED_SECRET (OSS caura#802): from backend-2.28.0 core-api refuses to
+# start in production without a perimeter for its header-trust auth path. The
+# gateway injects it as X-Gateway-Secret; core-api compares it. Older .env files
+# predate the key, and the bundle refreshed above references it — an empty value
+# fails the `${GATEWAY_SHARED_SECRET:?}` substitution at the pull/up -d below —
+# so it is backfilled here, before any compose invocation. Keyed on the VALUE
+# being empty, not the line being absent: .env.example ships the key blank, so a
+# seeded .env has the line already and a presence check would leave it empty.
+# Generated, not prompted: a shared secret between containers in this project.
+if [ -z "$(_env_key GATEWAY_SHARED_SECRET)" ]; then
+  _gw_secret=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+  if ! _rewrite_env_key GATEWAY_SHARED_SECRET "$_gw_secret"; then
+    echo "GATEWAY_SHARED_SECRET=${_gw_secret}" >> .env
+  fi
+  unset _gw_secret
+  log "Generated GATEWAY_SHARED_SECRET (required by core-api from backend-2.28.0)."
+fi
+
 # ── Pull + build + up ───────────────────────────────────────────────────────
 log "Pulling images at :${TO_VERSION}"
 if ! docker compose "${COMPOSE_FILES[@]}" pull --ignore-buildable 2>/dev/null; then
