@@ -121,10 +121,6 @@ services:
       PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
       CORE_API_URL: http://core-api:8000
       CORE_ADMIN_API_KEY: "${CORE_ADMIN_API_KEY:?set CORE_ADMIN_API_KEY in .env}"
-      # Gates the cron fanout endpoints (/api/v1/security/fanout/*,
-      # /api/v1/org-lifecycle/fanout/*) that platform-operations POSTs to.
-      # Must equal the value on the platform-operations service.
-      PLATFORM_OPERATIONS_INTERNAL_TOKEN: "${PLATFORM_OPERATIONS_INTERNAL_TOKEN:?install.sh generates this}"
       # Perimeter for the gateway header-trust path (OSS caura#802). The gateway
       # injects this as X-Gateway-Secret; core-api/admin-api compare it. Required
       # in production from backend-2.28.0. Same value across the three services.
@@ -175,28 +171,6 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    logging: *default-logging
-
-  # Enterprise scheduler: fires cron fanout POSTs to platform-admin-api on a
-  # fixed interval — session-cleanup (5m) and org-hard-delete-sweep (24h).
-  # In-process asyncio scheduler → MUST stay single-replica (the image runs
-  # uvicorn --workers 1; do not scale). Loosely coupled (HTTP only), so its
-  # image tag is pinned to MEMCLAW_OPS_VERSION (normally == MEMCLAW_VERSION).
-  platform-operations:
-    image: "ghcr.io/caura-ai/memclaw-platform-operations:${CAURA_OPS_VERSION:-${MEMCLAW_OPS_VERSION:-${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
-    restart: unless-stopped
-    environment:
-      ENVIRONMENT: production
-      # admin-api listens on :8001 internally (NOT the 8101 cloud default).
-      PLATFORM_ADMIN_API_URL: http://platform-admin-api:8001
-      PLATFORM_OPERATIONS_INTERNAL_TOKEN: "${PLATFORM_OPERATIONS_INTERNAL_TOKEN:?install.sh generates this}"
-      LOG_FORMAT_JSON: "true"
-      LOG_FILE: /var/log/memclaw/platform-operations/platform-operations.log
-    volumes:
-      - ./logs/platform-operations:/var/log/memclaw/platform-operations
-    depends_on:
-      platform-admin-api:
-        condition: service_started
     logging: *default-logging
 
   # OSS lifecycle scheduler (CAURA-655/656/657): fires periodic cron fanouts to
