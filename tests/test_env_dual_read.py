@@ -1147,7 +1147,15 @@ def test_the_shipped_env_example_resolves_every_image_tag(tmp_path):
         pytest.skip(f"docker compose unavailable here: {proc.stderr.strip()[:200]}")
     services = json.loads(proc.stdout)["services"]
 
-    pinned = re.search(r"^CAURA_VERSION=(\S+)", env, re.MULTILINE).group(1)
+    # Bound and asserted rather than chained: an unmatched search returns None,
+    # and .group() on it raises AttributeError, which reports as a broken test
+    # rather than as the template having lost its pin.
+    pinned_match = re.search(r"^CAURA_VERSION=(\S+)", env, re.MULTILINE)
+    assert pinned_match is not None, (
+        "the template has no CAURA_VERSION= line, so there is no pinned version "
+        "to compare the resolved image tags against"
+    )
+    pinned = pinned_match.group(1)
     for name in ("core-api", "core-storage-api", "app-frontend", "platform-operations"):
         tag = services[name]["image"].rsplit(":", 1)[1]
         assert tag == pinned, (
