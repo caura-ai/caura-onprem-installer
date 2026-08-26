@@ -74,13 +74,21 @@ location /api/setup/ {
 }
 
 # ── License status (AUTH via JWT on admin-api) ──
+# auth_request so /validate can mint the backend JWT for session
+# principals (the dashboard's license panel); admin-api requires a
+# Bearer here, so without it every browser call 401s. Callers holding
+# their own JWT pass /validate on it and keep their header via the
+# $effective_authorization map.
 location /api/license/ {
+    auth_request /_auth;
+    auth_request_set $backend_auth $upstream_http_x_backend_authorization;
     rewrite ^/api/license/(.*)$ /api/v1/license/$1 break;
     proxy_pass http://$admin_upstream;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Authorization $effective_authorization;
 }
 
 # ── Auth (login, register, session, OAuth) ──
@@ -120,12 +128,14 @@ location ^~ /api/keys {
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    auth_request_set $backend_auth $upstream_http_x_backend_authorization;
     rewrite ^/api/keys(.*)$ /api/v1/admin/api-keys$1 break;
     proxy_pass http://$admin_upstream;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Authorization $effective_authorization;
     proxy_set_header X-Tenant-ID $tenant_id;
     # Proves these identity headers came from the gateway, not a direct caller on
     # the Docker network. core-api 401s the header-trust path on a mismatch.
@@ -143,12 +153,14 @@ location ^~ /api/agent-keys {
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    auth_request_set $backend_auth $upstream_http_x_backend_authorization;
     rewrite ^/api/agent-keys(.*)$ /api/v1/admin/agent-keys$1 break;
     proxy_pass http://$admin_upstream;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Authorization $effective_authorization;
     proxy_set_header X-Tenant-ID $tenant_id;
     # Proves these identity headers came from the gateway, not a direct caller on
     # the Docker network. core-api 401s the header-trust path on a mismatch.
@@ -176,12 +188,14 @@ location ~ ^/api/(admin|superadmin|orgs|usage|security-audit|tenants|billing)(/|
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    auth_request_set $backend_auth $upstream_http_x_backend_authorization;
     rewrite ^/api/(.*)$ /api/v1/$1 break;
     proxy_pass http://$admin_upstream;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Authorization $effective_authorization;
     proxy_set_header X-Tenant-ID $tenant_id;
     # Proves these identity headers came from the gateway, not a direct caller on
     # the Docker network. core-api 401s the header-trust path on a mismatch.
@@ -206,11 +220,13 @@ location ~ ^/api/v1/(admin|superadmin|billing|usage|orgs)(/|$) {
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    auth_request_set $backend_auth $upstream_http_x_backend_authorization;
     proxy_pass http://$admin_upstream;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Authorization $effective_authorization;
     proxy_set_header X-Tenant-ID $tenant_id;
     # Proves these identity headers came from the gateway, not a direct caller on
     # the Docker network. core-api 401s the header-trust path on a mismatch.

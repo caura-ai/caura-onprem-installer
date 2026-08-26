@@ -15,6 +15,29 @@
 # addresses and returning 502s for up to an hour.
 resolver 127.0.0.11 valid=10s ipv6=off;
 
+# ── Backend Authorization for browser (session-cookie) callers ──
+# admin-api's JWTAuthMiddleware requires a Bearer on /admin/*, /orgs/*,
+# /billing/*, /usage/*, /license/* and /keys. Since enterprise 4ff73dd2
+# (in onprem-v2.11.16) the dashboard no longer holds a platform JWT —
+# the browser presents only the HttpOnly session cookie, and /validate
+# mints a backend JWT for session principals, returned in
+# X-Backend-Authorization. The admin-api locations capture it into
+# $backend_auth and send it upstream as Authorization; without this the
+# entire admin surface 401s for browser sessions.
+#
+# The map keeps every OTHER caller working unchanged: /validate mints
+# nothing for a JWT principal (they already hold one) or an API-key
+# principal (minting an admin JWT from an mc_ key would be privilege
+# escalation), so $backend_auth is empty and the caller's own
+# Authorization header passes through untouched.
+#
+# Duplicated in memclaw-tls.conf.template — `map` is http-context only,
+# so it cannot live in the shared location snippet.
+map $backend_auth $effective_authorization {
+    ""      $http_authorization;
+    default $backend_auth;
+}
+
 server {
     listen 80 default_server;
     include /etc/nginx/snippets/memclaw-locations.conf;

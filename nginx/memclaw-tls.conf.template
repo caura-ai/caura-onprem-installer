@@ -12,6 +12,15 @@
 
 resolver 127.0.0.11 valid=10s ipv6=off;
 
+# ── Backend Authorization for browser (session-cookie) callers ──
+# See the comment in memclaw.conf.template — same block, duplicated
+# because `map` is http-context only and cannot live in the shared
+# location snippet. Keep the two in sync.
+map $backend_auth $effective_authorization {
+    ""      $http_authorization;
+    default $backend_auth;
+}
+
 # Optional behind-LB note: if a customer fronts Caura with another
 # TLS terminator AND uses these certs, X-Forwarded-Proto from the
 # outer proxy is still honoured by upstream services because the
