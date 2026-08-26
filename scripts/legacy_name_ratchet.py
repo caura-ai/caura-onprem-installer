@@ -248,7 +248,9 @@ class Scan(NamedTuple):
 
     ``by_file`` maps path to the text of its non-exempt matching lines and how
     many times each appears; ``total`` is the same tally repo-wide; ``exempt``
-    counts marked lines per file, which are reported but never gated on.
+    counts marked lines per file, which are reported but never gated on;
+    ``exempt_text`` tallies those same marked lines by their TEXT rather than by
+    file, which is what the removal report needs.
 
     Text is whitespace-stripped. A line that moves into a class body or a deeper
     block gets re-indented on the way, and an indentation-sensitive comparison
@@ -264,6 +266,7 @@ class Scan(NamedTuple):
     by_file: dict[str, Counter[str]]
     total: Counter[str]
     exempt: Counter[str]
+    exempt_text: Counter[str]
 
     def counts(self) -> Counter[str]:
         """Non-exempt lines per file — what the ratchet holds flat."""
@@ -275,14 +278,20 @@ def scan(tree: str | None) -> Scan:
     by_file: dict[str, Counter[str]] = {}
     total: Counter[str] = Counter()
     exempt: Counter[str] = Counter()
+    # Keyed by text, unlike ``exempt`` which tallies per file. Both are needed:
+    # the per-file tally selects which files the new-exemption report examines,
+    # while the removal report has to name the actual line, since "did this alias
+    # survive the rewording" cannot be answered from a count.
+    exempt_text: Counter[str] = Counter()
     for path, _, text, is_exempt in _grep(tree):
         if is_exempt:
             exempt[path] += 1
+            exempt_text[text.strip()] += 1
             continue
         stripped = text.strip()
         by_file.setdefault(path, Counter())[stripped] += 1
         total[stripped] += 1
-    return Scan(by_file, total, exempt)
+    return Scan(by_file, total, exempt, exempt_text)
 
 
 def _mint_budget(head_total: Counter[str], base_total: Counter[str]) -> Counter[str]:
@@ -414,6 +423,56 @@ def _report_excused_moves(
             print(f"  {path}: {'x' + str(n) + ' ' if n > 1 else ''}{text[:80]}")
             print(f"      was in: {origin}")
     print()
+
+
+def _report_removed_exemptions(before: Counter[str], after: Counter[str]) -> None:
+    """Name every exempt line this change removed. Reports; never fails.
+
+    The other half of :func:`_report_new_exemptions`, and the gap that let a
+    demonstrated data-loss change pass both required gates green.
+
+    ``legacy-name-ok`` means "the ratchet may ignore this line". It has never
+    meant "this line is protected", and nothing enforced the second reading —
+    but the marker looks like protection, so lines carrying it were treated as
+    handled. Deleting one *lowers* a file's non-exempt count, which the ratchet
+    reports as progress. A sweep over two plugin files removed a dual-read alias
+    that decides which ``.env`` keys survive a redeploy; ratchet and sentinel
+    both exited 0. Three of the aliases involved already carried this marker.
+
+    Why this reports rather than fails, which was measured rather than assumed.
+    Upstream (caura#944), across the last 400 commits, seven removed a marked
+    line and **none** was a genuine removal of protection: every one reworded or
+    consolidated markers while keeping the alias, one collapsing six into one.
+    Replaying this port over the last 60 commits of this repo reproduced that
+    shape: the commits that removed a marked line were rewordings, not losses
+    of protection, and exit codes were identical on every one.
+
+    So a failing rule keyed on text identity would produce false positives and,
+    on the evidence, no true ones; a rule keyed on per-file counts would fail
+    the consolidation case too. Nothing textual separates "consolidated the
+    alias" from "deleted the alias" — that judgement is irreducibly human, so
+    this hands a human the fact rather than guessing.
+
+    **What to do when this fires.** Confirm the protection still exists in some
+    form. If the line was reworded or merged, nothing is wrong. If it is simply
+    gone, the dependant it existed for is now broken and nothing else in CI will
+    say so. Anything whose removal breaks an already-installed user belongs in
+    ``do_not_touch_sentinel.py``, which pins exact text and does fail — this
+    marker is not a substitute for that and never was.
+    """
+    removed = before - after
+    if not removed:
+        return
+
+    n = sum(removed.values())
+    print(
+        f"\n{n} exempt line(s) removed by this change. ``legacy-name-ok`` marks a line\n"
+        "the ratchet ignores, NOT a line that is protected — deleting one lowers the\n"
+        "count and reads as progress. Confirm each alias still exists in some form:"
+    )
+    for text, count in sorted(removed.items()):
+        suffix = f"  (x{count})" if count > 1 else ""
+        print(f"  {text.strip()[:100]}{suffix}")
 
 
 def _report_new_exemptions(
@@ -573,6 +632,7 @@ def main() -> int:
         return 1
 
     _report_new_exemptions(base_scan.exempt, head_scan.exempt, args.base)
+    _report_removed_exemptions(base_scan.exempt_text, head_scan.exempt_text)
 
     head_by_file, base_by_file = head_scan.by_file, base_scan.by_file
     budget = _mint_budget(head_scan.total, base_scan.total)
