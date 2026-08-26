@@ -21,6 +21,12 @@ set $admin_upstream "${ADMIN_UPSTREAM}";
 set $core_upstream  "${CORE_UPSTREAM}";
 set $app_upstream   "${APP_UPSTREAM}";
 
+# Defence in depth for the backend-JWT exchange: the mint header must never
+# reach a client from ANY location, including ones added later.
+# auth_request_set still captures it — $upstream_http_* is populated from the
+# raw upstream response, before this response filter applies.
+proxy_hide_header X-Backend-Authorization;
+
 # Health endpoint — gateway itself, no upstream. Used by external
 # load balancers to decide readiness before forwarding traffic.
 location = /healthz { return 200 "ok"; add_header Content-Type text/plain; }
@@ -57,6 +63,11 @@ location = /_auth {
     proxy_method    GET;
     proxy_pass_request_body off;
     proxy_set_header Content-Length "";
+    # Tells /validate this is the INTERNAL auth subrequest, so it may mint
+    # the backend JWT (X-Backend-Authorization) for session principals. The
+    # public /api/auth/ and /api/v1/auth/ prefixes below clear this header,
+    # so a client cannot forge it.
+    proxy_set_header X-Auth-Subrequest "1";
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -100,6 +111,11 @@ location /api/license/ {
 # in the POST body, not X-API-Key, so the subrequest 401s before the
 # real endpoint ever sees the request.
 location /api/auth/ {
+    # /validate is reachable through this prefix, and its full response goes
+    # back to the browser. Clear the subrequest marker so a caller cannot
+    # claim to be the internal auth_request and be handed a mintable
+    # admin-scoped token.
+    proxy_set_header X-Auth-Subrequest "";
     rewrite ^/api/auth/(.*)$ /api/v1/auth/$1 break;
     proxy_pass http://$auth_upstream;
     proxy_set_header Host $host;
@@ -108,6 +124,9 @@ location /api/auth/ {
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 location /api/v1/auth/ {
+    # Same forge protection as /api/auth/ above — /validate is reachable
+    # here too and the full response returns to the browser.
+    proxy_set_header X-Auth-Subrequest "";
     proxy_pass http://$auth_upstream;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
