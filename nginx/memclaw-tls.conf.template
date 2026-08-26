@@ -13,9 +13,9 @@
 resolver 127.0.0.11 valid=10s ipv6=off;
 
 # ── Backend Authorization for browser (session-cookie) callers ──
-# See the comment in memclaw.conf.template — same block, duplicated
-# because `map` is http-context only and cannot live in the shared
-# location snippet. Keep the two in sync.
+# See the comment in the HTTP-only variant of this file — same block,
+# duplicated because `map` is http-context only and cannot live in the
+# shared location snippet. Keep the two in sync.
 map $backend_auth $effective_authorization {
     ""      $http_authorization;
     default $backend_auth;

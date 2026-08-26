@@ -31,8 +31,8 @@ resolver 127.0.0.11 valid=10s ipv6=off;
 # escalation), so $backend_auth is empty and the caller's own
 # Authorization header passes through untouched.
 #
-# Duplicated in memclaw-tls.conf.template — `map` is http-context only,
-# so it cannot live in the shared location snippet.
+# Duplicated in the TLS variant of this file — `map` is http-context
+# only, so it cannot live in the shared location snippet.
 map $backend_auth $effective_authorization {
     ""      $http_authorization;
     default $backend_auth;
