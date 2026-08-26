@@ -64,9 +64,10 @@ location = /_auth {
     proxy_pass_request_body off;
     proxy_set_header Content-Length "";
     # Tells /validate this is the INTERNAL auth subrequest, so it may mint
-    # the backend JWT (X-Backend-Authorization) for session principals. The
-    # public /api/auth/ and /api/v1/auth/ prefixes below clear this header,
-    # so a client cannot forge it.
+    # the backend JWT (X-Backend-Authorization) for session principals. A
+    # client cannot forge it: /validate is unreachable through any public
+    # URL (exact-match 404 blocks below), and the public auth prefixes
+    # additionally clear this header as belt-and-braces.
     proxy_set_header X-Auth-Subrequest "1";
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -102,6 +103,21 @@ location /api/license/ {
     proxy_set_header Authorization $effective_authorization;
 }
 
+# ── /validate is INTERNAL-ONLY ──
+# The endpoint that trusts X-Auth-Subrequest must not be reachable through
+# any public URL: nginx's proxy_set_header merge rule means a location that
+# sets ANY proxy_set_header inherits NONE from the server context, so a
+# server-level default-clear of the marker cannot exist (unlike the
+# proxy_hide_header above, which locations do inherit), and per-location
+# clears alone would depend on every future location author remembering
+# them. Exact-match locations win over every prefix location regardless of
+# order, so these hold even if new /api/auth/* locations are added later.
+# Nothing calls /validate publicly — it exists for the gateway's
+# auth_request alone, and /_auth proxies straight to the upstream URI,
+# bypassing location matching, so it is unaffected by these blocks.
+location = /api/auth/validate    { return 404; }
+location = /api/v1/auth/validate { return 404; }
+
 # ── Auth (login, register, session, OAuth) ──
 # Two blocks — identical behaviour, different path prefix. The dashboard
 # and curl flows use /api/auth/*; the plugin defaults to /api/v1/auth/*
@@ -111,10 +127,9 @@ location /api/license/ {
 # in the POST body, not X-API-Key, so the subrequest 401s before the
 # real endpoint ever sees the request.
 location /api/auth/ {
-    # /validate is reachable through this prefix, and its full response goes
-    # back to the browser. Clear the subrequest marker so a caller cannot
-    # claim to be the internal auth_request and be handed a mintable
-    # admin-scoped token.
+    # Belt-and-braces behind the exact-match /validate 404 blocks above:
+    # even if a request somehow reached auth-api through this prefix, it
+    # could not claim to be the internal auth_request.
     proxy_set_header X-Auth-Subrequest "";
     rewrite ^/api/auth/(.*)$ /api/v1/auth/$1 break;
     proxy_pass http://$auth_upstream;
@@ -124,8 +139,7 @@ location /api/auth/ {
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 location /api/v1/auth/ {
-    # Same forge protection as /api/auth/ above — /validate is reachable
-    # here too and the full response returns to the browser.
+    # Same belt-and-braces as /api/auth/ above.
     proxy_set_header X-Auth-Subrequest "";
     proxy_pass http://$auth_upstream;
     proxy_set_header Host $host;
