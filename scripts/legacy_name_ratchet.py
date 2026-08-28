@@ -30,10 +30,44 @@ gate is pointed at. On a ``pull_request`` the checkout is already the merge
 commit, so the comparison against ``main`` is exactly this PR's contribution and
 there is nothing to maintain.
 
-**The escape hatch.** A line carrying the marker ``legacy-name-ok`` is not
-counted. Rule 3 keeps old names readable forever, so legitimate additions exist:
-a compat alias, a redirect, a test pinning the old wire format. Put the marker on
-the line with a reason and it lands in the diff where a reviewer will see it.
+**The escape hatch, and the two claims it can make.** A line carrying either
+marker is not counted. The gate cannot tell them apart — the pass/fail decision
+never reads which one is there, and nothing that failed before passes now. They
+differ only in what a reviewer has to check, which is the only thing a marker
+was ever for. Put one on the line with a reason and it lands in the diff.
+
+``legacy-name-ok`` is rule 3's hatch: something new that BEARS the old name — a
+compat alias, a redirect, a test pinning the old wire format.
+
+``legacy-name-floor`` is a line that merely NAMES something the rename will never
+reach, and cannot be correct without the literal: a pasteable command, an on-disk
+path, a served mirror path. Nothing is declared and the footprint does not grow.
+
+Why a second marker rather than a convention inside the reason text. Audited at
+full coverage across the fleet: 622 markers — **340 aliases, 274 floor
+mentions**, and 8 on lines that should have been reworded rather than marked at
+all. Forty-four per cent of every exemption in the programme is the kind rule 3
+has nothing to say about, and the only thing separating them is prose.
+
+The two populations also grow from different work. An alias arrives when
+something is renamed. A floor mention arrives whenever a document that mentions
+the product's own name is EDITED — re-flowing a comment mints new text even as
+the file's count falls, and a marker cannot come off a line without the literal
+coming off with it. So that half of the pile is fed by maintaining documentation
+rather than by sweeping the brand, and it grows for as long as the docs are
+maintained. A single PR in this fleet carrying eleven exemptions, four of them
+aliases, is the shape of it: a reviewer facing eleven undifferentiated entries
+stops reading.
+
+What this is NOT is a fix for false reasons at scale. Only 11 of the 622 (1.8%)
+put alias language on a non-alias line, and 218 of the 274 floor mentions
+already say "floor", "pinned" or "frozen" in their own reason text. Authors have
+been drawing the distinction correctly all along; the gate has had nowhere to
+record it, so it could not count on it. This makes the distinction structural.
+
+Both are a claim someone has to stand behind, and a floor marker is falsifiable
+in one move: reword the line without the old name, and if it is still correct
+then the marker was false and the line should carry no marker at all.
 
 **Why the count is not the check.** A file's total is a cheap proxy for "worth
 looking at", and it is the wrong one in both directions. It fails a cross-file
@@ -84,12 +118,70 @@ from typing import NamedTuple
 # a hole in the scan.
 LEGACY_NAME = "memclaw"  # legacy-name-ok: the pattern this gate searches for
 
-# Kept deliberately ugly so it is never typed by accident and always reads as a
+# Kept deliberately ugly so they are never typed by accident and always read as a
 # decision rather than a formatting artifact.
 EXEMPT_MARKER = "legacy-name-ok"
+FLOOR_MARKER = "legacy-name-floor"
+
+
+class _Kind(NamedTuple):
+    """What the report calls one marker, and the guidance printed under it.
+
+    A NamedTuple rather than a bare pair because ``_KINDS[marker][0]`` says
+    nothing about which half it is, and the file already uses one for
+    :class:`Scan`.
+    """
+
+    label: str
+    guidance: tuple[str, ...]
+
+
+# The markers, in the order the report lists them, with what it calls each.
+# Aliases lead whether there are four of them or one: they are what rule 3 wants
+# eyes on, so their position must not depend on a tally. The label carries its
+# own ``(s)`` the way every other count in this file does.
+#
+# The gate never reads this. Both markers exempt a line identically — see
+# :func:`_kind` — and the split exists purely so the report can say "4 compat
+# aliases and 6 floor mentions" where it used to say "11 exemptions".
+#
+# **Keys must be lowercase**, or the entry is never found and its lines vanish
+# from the report while still exempting. :func:`_kind` explains why.
+#
+# **Adding a kind is not only a line here.** The failure text at the end of
+# :func:`main` is the only place the gate tells an author a marker exists at all,
+# and it is written out per kind rather than driven from this table, because it
+# is imperative advice addressed to someone whose build just went red and does
+# not fit the same mould as the report's. A new kind wants a paragraph there too;
+# omitted, it is a marker nobody discovers.
+#
+# Guidance is a tuple of already-wrapped lines rather than one string with
+# newlines in it, for the same reason this file prints its other prose a line at
+# a time: re-flowing an embedded ``\n`` is how a paragraph silently loses its
+# shape, and the first line has to be joinable to a count.
+_KINDS: dict[str, _Kind] = {
+    EXEMPT_MARKER: _Kind(
+        "compat alias(es)",
+        (
+            "rule 3's escape hatch, and what this report is for.",
+            "Check each is a compat alias, a redirect or a pinned wire format,",
+            "and not headroom for a new name:",
+        ),
+    ),
+    FLOOR_MARKER: _Kind(
+        "floor mention(s)",
+        (
+            "a permanent name in text, not a new declaration.",
+            "Check the line cannot be correct without the literal: a pasteable",
+            "command, an on-disk path, a served mirror path. If rewording it",
+            "would leave it correct, the claim is false and it should carry no",
+            "marker at all:",
+        ),
+    ),
+}
 
 # Matched as a bounded token, not a bare substring. A substring test exempts any
-# line that merely contains the marker inside a longer word — "not
+# line that merely contains a marker inside a longer word — "not
 # legacy-name-okay to leave in" would silence a real occurrence, which is a hole
 # in the gate rather than a nuisance. Case-insensitive for the same reason the
 # name match is: a marker typed ``Legacy-Name-OK`` is plainly a decision, and
@@ -102,9 +194,91 @@ EXEMPT_MARKER = "legacy-name-ok"
 # Neither boundary is a comment prefix — comment syntax differs across the file
 # types this scans, and JSON has none at all while still being somewhere an alias
 # can legitimately live.
+#
+# One pattern for both markers rather than one each, so those boundaries are
+# stated once and cannot drift apart: the lookbehind and lookahead sit outside
+# the alternation, so every marker gets both. Alternation order is not load
+# bearing here because neither marker is a prefix of the other — if a third is
+# ever added that IS a prefix of another, list the longer one first, since Python
+# takes the first alternative that matches rather than the longest.
 EXEMPT_RE = re.compile(
-    rf"(?<![\w-]){re.escape(EXEMPT_MARKER)}(?=[\s:]|$)", re.IGNORECASE
+    rf"(?<![\w-])(?P<marker>{'|'.join(re.escape(m) for m in _KINDS)})(?=[\s:]|$)",
+    re.IGNORECASE,
 )
+
+
+def _kind(text: str) -> str | None:
+    """Which marker exempts this line, or ``None`` if none does.
+
+    Returns the marker literal rather than its label, so the marker stays the one
+    identity a kind is keyed by and :data:`_KINDS` stays the only place a label
+    is written down.
+
+    The gate's decision reads only whether this is ``None``. That is what keeps
+    the two markers interchangeable at the point of failure: a line that passed
+    before passes now, and a marker a reviewer thinks is the wrong KIND is still
+    a marker, so mislabelling one can never turn a red build green or a green one
+    red. Only the report reads which.
+
+    **When both claims are true of one line, the alias wins.** This is not the
+    degenerate case it looks like: lines across the fleet name a permanent thing
+    AND declare a dual-read in the same breath, e.g. an image tag whose
+    repository name is frozen while its version is read from both spellings.
+    Both claims are true, one line can only carry one marker, and picking by
+    position on the line would make the answer depend on which end the author
+    typed first.
+
+    So precedence is :data:`_KINDS` order, which puts the alias first: an alias
+    reported as a floor mention is a rule 3 decision nobody looked at, while a
+    floor mention reported as an alias is one extra line in the list that most
+    wants reading anyway. Under-counting the aliases is the expensive direction,
+    so the tie breaks away from it.
+
+    The lowercasing is what keeps the result a usable :data:`_KINDS` key, and it
+    is load bearing rather than tidiness. A kind that does not match a key is
+    still not ``None``, so the line stays exempt and the gate stays green — while
+    the report, which looks the kind up to decide which list it belongs in, finds
+    nothing and drops the line without a word. Exempt but unprinted is the one
+    outcome this report exists to prevent.
+    """
+    found = {m.group("marker").lower() for m in EXEMPT_RE.finditer(text)}
+    return next((marker for marker in _KINDS if marker in found), None)
+
+
+def _reason(text: str, kind: str) -> str:
+    """What ``kind``'s marker says on this line: the text between it and the next.
+
+    Lives beside :func:`_kind` rather than inline in the report because the two
+    have to agree about which marker owns the line, and a rule split across two
+    call sites is one that eventually disagrees with itself.
+
+    Bounded on BOTH ends, and the second bound is the one that is easy to miss.
+    Slicing to end-of-line is right for the ordinary single-marker case and wrong
+    the moment a line carries two: with the winning marker written first, the
+    tail swallows the other marker's literal AND its reason, so the report groups
+    under a key like ``dual-read alias  legacy-name-floor: the command``. That is
+    not merely ugly — the reason is the grouping key, so two lines making the
+    same claim stop collapsing together, which is the one thing the grouping is
+    for.
+
+    ``.lower()`` on both sides of the comparison: the pattern is
+    case-insensitive, so a marker typed ``Legacy-Name-OK`` matches while ``kind``
+    is always normalised. Comparing raw finds nothing and quietly degrades every
+    oddly-cased line to "(no reason given)".
+
+    Empty string when the marker is not found, which cannot happen for a line
+    that :func:`_kind` classified — the caller turns it into "(no reason given)"
+    either way.
+    """
+    matches = list(EXEMPT_RE.finditer(text))
+    here = next(
+        (i for i, m in enumerate(matches) if m.group("marker").lower() == kind), None
+    )
+    if here is None:
+        return ""
+    start = matches[here].end()
+    stop = matches[here + 1].start() if here + 1 < len(matches) else len(text)
+    return text[start:stop].lstrip(": ").strip()
 
 
 # Above this many lines sharing one reason, the list is collapsed to a count.
@@ -154,8 +328,14 @@ def _git(args: list[str]) -> str:
     )
 
 
-def _grep(tree: str | None, pathspec: str = ":/") -> list[tuple[str, str, str, bool]]:
-    """``(path, lineno, text, exempt)`` for every matching line.
+def _grep(
+    tree: str | None, pathspec: str = ":/"
+) -> list[tuple[str, str, str, str | None]]:
+    """``(path, lineno, text, kind)`` for every matching line.
+
+    ``kind`` is the marker that exempts the line, or ``None``. Callers deciding
+    pass/fail test it against ``None`` and never read which marker it is — see
+    :func:`_kind`.
 
     Exempt lines are returned rather than dropped so the caller can report what a
     change newly exempted — see :func:`main`.
@@ -180,7 +360,7 @@ def _grep(tree: str | None, pathspec: str = ":/") -> list[tuple[str, str, str, b
 
     prefix = f"{tree}:" if tree is not None else ""
 
-    out: list[tuple[str, str, str, bool]] = []
+    out: list[tuple[str, str, str, str | None]] = []
     # Records are newline-terminated (a matched line cannot contain one) and
     # their three fields are NUL-separated.
     for record in _git(args).split("\n"):
@@ -194,7 +374,7 @@ def _grep(tree: str | None, pathspec: str = ":/") -> list[tuple[str, str, str, b
             if not path.startswith(prefix):
                 continue
             path = path[len(prefix) :]
-        out.append((path, lineno, text, bool(EXEMPT_RE.search(text))))
+        out.append((path, lineno, text, _kind(text)))
     return out
 
 
@@ -288,9 +468,12 @@ def scan(tree: str | None) -> Scan:
     by_file: dict[str, Counter[str]] = {}
     total: Counter[str] = Counter()
     exempt_by_file: dict[str, Counter[str]] = {}
-    for path, _, text, is_exempt in _grep(tree):
+    # Not split by kind, and it does not want to be: this is the tally the gate
+    # decides on, and the decision is exemption itself rather than which claim
+    # was made. Only the report reads the kind.
+    for path, _, text, kind in _grep(tree):
         stripped = text.strip()
-        if is_exempt:
+        if kind is not None:
             exempt_by_file.setdefault(path, Counter())[stripped] += 1
             continue
         by_file.setdefault(path, Counter())[stripped] += 1
@@ -446,9 +629,9 @@ def _report_removed_exemptions(
     The other half of :func:`_report_new_exemptions`, and the gap that let a
     demonstrated data-loss change pass both required gates green.
 
-    ``legacy-name-ok`` means "the ratchet may ignore this line". It has never
-    meant "this line is protected", and nothing enforced the second reading —
-    but the marker looks like protection, so lines carrying it were treated as
+    Either marker means "the ratchet may ignore this line". Neither has ever
+    meant "this line is protected", and nothing enforced that reading — but a
+    marker looks like protection, so lines carrying one were treated as
     handled. Deleting one *lowers* a file's non-exempt count, which the ratchet
     reports as progress. A sweep over two plugin files removed a dual-read alias
     that decides which ``.env`` keys survive a redeploy; ratchet and sentinel
@@ -512,11 +695,18 @@ def _report_removed_exemptions(
     if not drops:
         return
 
+    # Not split by kind, unlike the new-exemption report. The populations are the
+    # other way round here — a handful of removals across hundreds of commits,
+    # against eleven new exemptions in a single PR — so the wall this list can
+    # become is not the failure mode, and a section header per kind would be
+    # ceremony over two lines.
     n = sum(sum(c.values()) for c in drops.values())
     print(
-        f"\n{n} exempt line(s) removed by this change. ``legacy-name-ok`` marks a line\n"
-        "the ratchet ignores, NOT a line that is protected — deleting one lowers the\n"
-        "count and reads as progress. Confirm each alias still exists in some form:"
+        f"\n{n} exempt line(s) removed by this change. A marker marks a line the\n"
+        "ratchet ignores, NOT a line that is protected — deleting one lowers the\n"
+        "count and reads as progress. Confirm what each one stood for still exists\n"
+        "in some form — the alias it declared, or the text that could not be\n"
+        "correct without the name:"
     )
     for text, per_file in sorted(drops.items()):
         count = sum(per_file.values())
@@ -553,6 +743,13 @@ def _report_new_exemptions(
     repo never had. This report is no longer the only thing standing between that
     move and a green tick.
 
+    **Split by kind, because one list of eleven is not a signal.** This is the
+    only place the difference between the two markers is read. Floor mentions
+    outnumber aliases in the ordinary documentation PR, and an undifferentiated
+    list is one a reviewer stops reading — so the aliases, which are the lines
+    rule 3 actually wants eyes on, are listed first and counted apart. The gate's
+    decision is untouched by the split; see :func:`_kind`.
+
     It is still printed, on the passing path as well. An exemption is the move
     that buys headroom, and a deliberate one — an alias landing in the same PR as
     unrelated work — should never be made quietly even when it is legitimate.
@@ -578,14 +775,14 @@ def _report_new_exemptions(
     # the swap this report exists to expose shows up as the ONE reason that does
     # not match its neighbours. Collapsing the repeats is what makes the odd one
     # visible instead of burying it on line forty.
-    by_reason: dict[str, list[tuple[str, str, str]]] = {}
+    by_kind: dict[str, dict[str, list[tuple[str, str, str]]]] = {}
     shown_total = 0
     unfiltered: list[str] = []
     for path in sorted(added):
         here = [
-            (lineno, text.strip())
-            for _, lineno, text, exempt in _grep(None, pathspec=_literal(path))
-            if exempt
+            (lineno, text.strip(), kind)
+            for _, lineno, text, kind in _grep(None, pathspec=_literal(path))
+            if kind is not None
         ]
         # The same pair the offender report below uses, for the same reason: the
         # text-or-count comparison decides WHICH FILE to talk about, and git's own
@@ -593,7 +790,7 @@ def _report_new_exemptions(
         # existing line that gains a marker is a rewrite, so git calls it added
         # and it stays in — which matters, because that is the headroom move.
         touched = _added_lines(base, path)
-        picked = [(n, t) for n, t in here if int(n) in touched]
+        picked = [(n, t, k) for n, t, k in here if int(n) in touched]
         if not picked:
             # Falling back to every exempt line in the file rather than to
             # silence, on the same trade as below: too many lines is a nuisance
@@ -610,18 +807,28 @@ def _report_new_exemptions(
             picked = here
             unfiltered.append(path)
         shown_total += len(picked)
-        for lineno, stripped in picked:
-            match = EXEMPT_RE.search(stripped)
-            tail = stripped[match.end() :].lstrip(": ") if match else ""
-            by_reason.setdefault(tail.strip() or "(no reason given)", []).append(
-                (path, lineno, stripped)
-            )
+        for lineno, stripped, kind in picked:
+            tail = _reason(stripped, kind)
+            by_kind.setdefault(kind, {}).setdefault(
+                tail.strip() or "(no reason given)", []
+            ).append((path, lineno, stripped))
 
     print(
         f"{shown_total} exempt line(s) written by this change in {len(added)} file(s) —"
     )
-    print("check each is a compat alias, a redirect or a pinned wire format, and not")
-    print("headroom for a new name:")
+
+    # In ``_KINDS`` order rather than by size, so aliases lead even when the
+    # mentions outnumber them — which is the usual case and the reason for the
+    # split.
+    present = [
+        (marker, sum(len(lines) for lines in by_kind[marker].values()))
+        for marker in _KINDS
+        if marker in by_kind
+    ]
+    if len(present) > 1:
+        # The line the split exists for. Skipped when only one kind is present,
+        # where it would only restate the section header underneath it.
+        print(", ".join(f"{n} {_KINDS[marker].label}" for marker, n in present) + ".")
     if unfiltered:
         named = ", ".join(unfiltered[:4]) + (
             f" (+{len(unfiltered) - 4} more)" if len(unfiltered) > 4 else ""
@@ -631,17 +838,28 @@ def _report_new_exemptions(
             "exempt line they hold is listed, so some may predate this change)"
         )
 
-    for reason, lines in sorted(by_reason.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        if len(lines) <= _EXEMPTION_GROUP_AT:
-            for path, lineno, stripped in lines:
-                print(f"  {path}:{lineno}: {stripped[:100]}")
-            continue
-        files = sorted({path for path, _, _ in lines})
-        shown = ", ".join(files[:4]) + (
-            f" (+{len(files) - 4} more)" if len(files) > 4 else ""
-        )
-        print(f"  {len(lines)}x  {reason[:80]}")
-        print(f"      in {len(files)} file(s): {shown}")
+    for marker, n in present:
+        # ``spec``, not ``kind``: ``kind`` is the marker literal a few lines up,
+        # and one name for two types inside one function costs the reader a
+        # lookup at every use.
+        spec = _KINDS[marker]
+        print(f"\n{n} {spec.label} — {spec.guidance[0]}")
+        for line in spec.guidance[1:]:
+            print(line)
+        by_reason = by_kind[marker]
+        for reason, lines in sorted(
+            by_reason.items(), key=lambda kv: (-len(kv[1]), kv[0])
+        ):
+            if len(lines) <= _EXEMPTION_GROUP_AT:
+                for path, lineno, stripped in lines:
+                    print(f"  {path}:{lineno}: {stripped[:100]}")
+                continue
+            files = sorted({path for path, _, _ in lines})
+            shown = ", ".join(files[:4]) + (
+                f" (+{len(files) - 4} more)" if len(files) > 4 else ""
+            )
+            print(f"  {len(lines)}x  {reason[:80]}")
+            print(f"      in {len(files)} file(s): {shown}")
     print()
 
 
@@ -748,8 +966,8 @@ def main() -> int:
         added = _added_lines(args.base, path)
         candidates = [
             (lineno, text.strip())
-            for _, lineno, text, exempt in _grep(None, pathspec=_literal(path))
-            if not exempt and text.strip() in minted
+            for _, lineno, text, kind in _grep(None, pathspec=_literal(path))
+            if kind is None and text.strip() in minted
         ]
         shown = [(n, t) for n, t in candidates if int(n) in added]
         # Falling back to every occurrence rather than to silence: if the diff
@@ -778,8 +996,15 @@ def main() -> int:
         "text this repo did not have before, so no rearrangement produced it.\n\n"
         "If the addition is deliberate — a compat alias, a redirect, a test pinning the old\n"
         f"wire format, all of which rule 3 requires — append '{EXEMPT_MARKER}: <reason>' to the\n"
-        "line. It is then exempt, and the reason is visible in the diff."
+        "line. It is then exempt, and the reason is visible in the diff.\n\n"
+        "If instead the line only NAMES something the rename will never reach, and cannot\n"
+        "be correct without the literal — a pasteable command, an on-disk path, a served\n"
+        f"mirror path — append '{FLOOR_MARKER}: <reason>' instead. Identical exemption,\n"
+        "different claim: nothing is declared there, so it is counted apart and the\n"
+        "aliases stay readable. Check the claim before you make it — if rewording the\n"
+        "line would leave it correct, reword it rather than marking it."
     )
+
     return 1
 
 
