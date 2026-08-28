@@ -2,7 +2,7 @@
 
 > This is the **operator** protocol for Caura-managed on-prem deployments that
 > front the stack with the **TLS (Caddy) overlay** and run the scheduler
-> services (e.g. eToro). For the simple customer flow see [`upgrade.md`](upgrade.md).
+> services. For the simple customer flow see [`upgrade.md`](upgrade.md).
 > The two differ in three ways that matter: managed cutovers (1) always pass
 > the explicit `-f` overlay files, (2) stage on a mirror box first, and (3)
 > must account for `core-operations`/`platform-operations`.
@@ -11,8 +11,14 @@
 
 | Box | Role | Reach |
 |-----|------|-------|
-| `erni-onprem` | **staging mirror** (validate here first — never skip) | `gcloud compute ssh erni-onprem --zone us-central1-f` (direct external IP; IAP not authorized). gcloud token lapses → `gcloud auth login`. TLS domain `erni-onprem-test.memclaw.dev`, admin `t@t.com`. |
-| `oc-memclaw-prod` | **eToro prod** (`memclawv1.clawz.org` → 134.98.155.239) | `ssh -i ~/.ssh/id_ed25519_etoro_openclaw ubuntu@134.98.155.239`; `sudo`; app at `/opt/memclaw`. |
+| *staging mirror* | Validate here first — **never skip**. | `gcloud compute ssh <box> --zone <zone>` (direct external IP; IAP not authorized). gcloud token lapses → `gcloud auth login`. Has its own TLS domain and admin account. |
+| *managed prod* | The customer-facing deployment being cut over. | `ssh -i <key> <user>@<host>`; `sudo`; app at `/opt/memclaw`. <!-- legacy-name-ok: the on-disk install path, which is floor --> |
+
+> **Box names, hostnames, addresses and key paths are deliberately not in this
+> file.** This repository is public. The fleet inventory — which mirror pairs
+> with which deployment, and how to reach each — lives in the internal ops
+> store; get it from there before starting. A runbook is portable across
+> deployments, an inventory is not, and the two have no reason to share a file.
 
 Compose file set on these boxes (**always pass all three**, in this order):
 ```
@@ -48,13 +54,13 @@ gh api -X POST repos/caura-ai/caura-enterprise/git/refs \
 - Gateway/nginx: rebuilt locally regardless (`docker compose build gateway`).
 - Confirm embedding provider (`EMBEDDING_PROVIDER=openai` → embedder 404 is fine).
 
-## Phase 3 — Validate on `erni-onprem` (never skip)
+## Phase 3 — Validate on the staging mirror (never skip)
 
-Run the full Phase-4 cutover on erni, then smoke:
+Run the full Phase-4 cutover on the mirror, then smoke:
 - Alembic heads advanced; `/healthz`, `/api/version`, plugin floor == served version.
 - **write→recall round-trip:** login (`/api/auth/user/login`) → mint a key (`POST /api/keys?tenant_id=…` body `{tenant_id,label,kind:"user_api_key"}`) → MCP `memclaw_write`+`memclaw_recall` **with an explicit `agent_id`** (the default `mcp-agent` is rejected on the gateway path) → delete the key.
 
-## Phase 4 — eToro cutover
+## Phase 4 — Production cutover
 
 ```bash
 cd /opt/memclaw
@@ -110,7 +116,7 @@ With the floor bumped, manifest-aware nodes (plugin ≥ 2.6.0) auto-upgrade on t
 | Service | What it does | On-prem reality |
 |---------|--------------|-----------------|
 | **core-operations** | OSS lifecycle crons: archive-expired/stale, **purge-soft-deleted** (retention, default 30d), crystallize, entity-link, insights. | **Deployed.** Fires fanout POSTs to core-api; **core-api self-consumes them in-process** on the InProcess event bus (`register_archive_consumers` under `isinstance(event_bus, InProcessEventBus)` + pipeline/insights always). Single-replica. Pinned to `CAURA_OPS_VERSION`. Logs to **stdout** (image runs non-root). Scheduler is **aligned** (daily cadence; does **not** fire on container startup). |
-| **platform-operations** | session-cleanup (5m) + org-hard-delete-sweep (24h), synchronous via platform-admin-api. | **Deferred** on eToro. Needs `PLATFORM_OPERATIONS_INTERNAL_TOKEN` on **both** itself and platform-admin-api; admin-api listens on **:8001** (not the :8101 cloud default). Its image is enterprise → private; make pullable before deploying. |
+| **platform-operations** | session-cleanup (5m) + org-hard-delete-sweep (24h), synchronous via platform-admin-api. | **Deferred** on current managed deployments. Needs `PLATFORM_OPERATIONS_INTERNAL_TOKEN` on **both** itself and platform-admin-api; admin-api listens on **:8001** (not the :8101 cloud default). Its image is enterprise → private; make pullable before deploying. |
 | **core-worker** | SaaS pubsub offload for embed/enrich/lifecycle. | **Not used on-prem** — the inprocess bus means core-api handles lifecycle itself. |
 
 **Event bus:** on-prem `EVENT_BUS_BACKEND` is unset → **`inprocess`** (the only backends are `inprocess`/`pubsub`; there is **no** rabbit bus — `RABBITMQ_URL` serves platform-audit, not `common.events`). This is *why* core-worker isn't needed here.
