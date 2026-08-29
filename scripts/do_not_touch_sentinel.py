@@ -113,17 +113,18 @@ class Sentinel:
 
 # ── the list ─────────────────────────────────────────────────────────────────
 #
-# Entries whose pinned text contains the old brand carry a marker, because this
-# file is itself scanned by the ratchet. Nearly all carry ``legacy-name-floor``,
-# and the reason is the same every time: the entry exists to pin a string
-# exactly, so it NAMES that string rather than declaring anything, and rewording
-# it would break the pin. The few that carry ``legacy-name-ok`` pin something
-# that really is a compat alias, and say so in their own reason.
+# Entries whose pinned text contains the old brand carry ``legacy-name-floor``,
+# because this file is itself scanned by the ratchet. The entry NAMES an exact
+# string rather than declaring that contract itself, even when the source line
+# it pins is a compat alias. A future entry that itself declares a compat alias
+# would carry ``legacy-name-ok`` instead.
 #
 # A marker here can be coupled to the line it pins. Where the pinned text
 # includes that line's own trailing comment, the marker is part of the string
 # being matched — so swapping one on the source line without swapping it here
-# (or the reverse) stops the pin matching, and this gate fails. Excluding this file from the ratchet instead would
+# (or the reverse) stops the pin matching, and this gate fails.
+#
+# Excluding this file from the ratchet instead would
 # leave a hole in that scan, which is the trade its author already refused once.
 
 SENTINELS: tuple[Sentinel, ...] = (
