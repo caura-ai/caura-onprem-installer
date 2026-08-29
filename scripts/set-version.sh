@@ -25,7 +25,7 @@
 
 set -euo pipefail
 
-MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"  # legacy-name-ok: pinned floor string, identical to the five sibling day-2 scripts
+MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"  # legacy-name-floor: floor, identical to the five sibling day-2 scripts
 MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 
 SUFFIX="VERSION"

@@ -1,8 +1,8 @@
 # Caura Enterprise — On-Prem Deployment
 
 > **MemClaw is now Caura** — same product, one name. All installed-machine  <!-- legacy-name-ok: the rename callout has to name the old brand -->
-> identifiers (`/etc/memclaw`, `memclaw-*` images, `MEMCLAW_*` vars, the  <!-- legacy-name-ok: lists the frozen installed-machine identifiers -->
-> `memclaw` postgres role) are unchanged, permanently: existing installs  <!-- legacy-name-ok: lists the frozen installed-machine identifiers -->
+> identifiers (`/etc/memclaw`, `memclaw-*` images, `MEMCLAW_*` vars, the  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
+> `memclaw` postgres role) are unchanged, permanently: existing installs  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
 > need nothing.
 
 Self-hosted Caura Enterprise as a Docker Compose stack. Runs on a

@@ -12,7 +12,7 @@
 | Box | Role | Reach |
 |-----|------|-------|
 | *staging mirror* | Validate here first — **never skip**. | `gcloud compute ssh <box> --zone <zone>` (direct external IP; IAP not authorized). gcloud token lapses → `gcloud auth login`. Has its own TLS domain and admin account. |
-| *managed prod* | The customer-facing deployment being cut over. | `ssh -i <key> <user>@<host>`; `sudo`; app at `/opt/memclaw`. <!-- legacy-name-ok: the on-disk install path, which is floor --> |
+| *managed prod* | The customer-facing deployment being cut over. | `ssh -i <key> <user>@<host>`; `sudo`; app at `/opt/memclaw`. <!-- legacy-name-floor: the on-disk install path --> |
 
 > **Box names, hostnames, addresses and key paths are deliberately not in this
 > file.** This repository is public. The fleet inventory — which mirror pairs
