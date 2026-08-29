@@ -113,11 +113,17 @@ class Sentinel:
 
 # ── the list ─────────────────────────────────────────────────────────────────
 #
-# Entries whose pinned text contains the old brand carry ``legacy-name-ok``,
-# because this file is itself scanned by the ratchet, and the reason is the same
-# every time: the line exists to pin a string rule 3 keeps readable forever.
-# Entries pinning brand-free text need no marker and correctly have none — the
-# ratchet never sees them. Excluding this file from the ratchet instead would
+# Entries whose pinned text contains the old brand carry a marker, because this
+# file is itself scanned by the ratchet. Nearly all carry ``legacy-name-floor``,
+# and the reason is the same every time: the entry exists to pin a string
+# exactly, so it NAMES that string rather than declaring anything, and rewording
+# it would break the pin. The few that carry ``legacy-name-ok`` pin something
+# that really is a compat alias, and say so in their own reason.
+#
+# A marker here can be coupled to the line it pins. Where the pinned text
+# includes that line's own trailing comment, the marker is part of the string
+# being matched — so swapping one on the source line without swapping it here
+# (or the reverse) stops the pin matching, and this gate fails. Excluding this file from the ratchet instead would
 # leave a hole in that scan, which is the trade its author already refused once.
 
 SENTINELS: tuple[Sentinel, ...] = (
@@ -137,13 +143,13 @@ SENTINELS: tuple[Sentinel, ...] = (
     # an incident, on hardware we cannot reach.
     Sentinel(
         path="docker-compose.yml",
-        text='POSTGRES_DB: "${POSTGRES_DB:-memclaw}"',  # legacy-name-ok: pinned floor string
+        text='POSTGRES_DB: "${POSTGRES_DB:-memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the database the stack creates and connects to stops matching existing installs",
     ),
     Sentinel(
         path="docker-compose.yml",
-        text='POSTGRES_USER: "${POSTGRES_USER:-memclaw}"',  # legacy-name-ok: pinned floor string
+        text='POSTGRES_USER: "${POSTGRES_USER:-memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the role the stack creates stops matching the one existing data is owned by",
     ),
@@ -153,37 +159,37 @@ SENTINELS: tuple[Sentinel, ...] = (
         # there is no comment/code distinction to lean on and this value lives in
         # a "test: [CMD-SHELL, ...]" list, so the surrounding command is what
         # makes the entry unsatisfiable by anything but the healthcheck itself.
-        text="pg_isready -U ${POSTGRES_USER:-memclaw}",  # legacy-name-ok: pinned floor string
+        text="pg_isready -U ${POSTGRES_USER:-memclaw}",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="postgres never reports healthy, so every dependent service hangs on startup",
     ),
     Sentinel(
         path="docker-compose.yml",
-        text="postgresql+asyncpg://${POSTGRES_USER:-memclaw}",  # legacy-name-ok: pinned floor string
+        text="postgresql+asyncpg://${POSTGRES_USER:-memclaw}",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="both DATABASE_URLs point at a role that does not exist on an existing install",
     ),
     Sentinel(
         path="docker-compose.yml",
-        text='ALLOYDB_DATABASE: "${POSTGRES_DB:-memclaw}"',  # legacy-name-ok: pinned floor string
+        text='ALLOYDB_DATABASE: "${POSTGRES_DB:-memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the platform services address a database name no existing install has",
     ),
     Sentinel(
         path="scripts/backup.sh",
-        text='pg_dump -U "${POSTGRES_USER:-memclaw}" -Fc "${POSTGRES_DB:-memclaw}"',  # legacy-name-ok: pinned floor string
+        text='pg_dump -U "${POSTGRES_USER:-memclaw}" -Fc "${POSTGRES_DB:-memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="nightly backups silently dump the wrong database, or nothing at all",
     ),
     Sentinel(
         path="scripts/restore.sh",
-        text='pg_restore --clean --if-exists -U "${POSTGRES_USER:-memclaw}"',  # legacy-name-ok: pinned floor string
+        text='pg_restore --clean --if-exists -U "${POSTGRES_USER:-memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="a restore targets a database that does not exist — during an incident",
     ),
     Sentinel(
         path="upgrade.sh",
-        text='pg_dump -Fc -U "${POSTGRES_USER:-memclaw}"',  # legacy-name-ok: pinned floor string
+        text='pg_dump -Fc -U "${POSTGRES_USER:-memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the pre-upgrade safety dump captures the wrong database or fails",
     ),
@@ -202,49 +208,49 @@ SENTINELS: tuple[Sentinel, ...] = (
     # the variable. Same partial-application shape as the Postgres defaults.
     Sentinel(
         path="install.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-ok: pinned floor string
+        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="a re-run installs a second copy beside the customer's existing stack",
     ),
     Sentinel(
         path="upgrade.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-ok: pinned floor string
+        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="upgrade cannot find the install it is upgrading",
     ),
     Sentinel(
         path="scripts/backup.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-ok: pinned floor string
+        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="backups run against an empty directory and report success",
     ),
     Sentinel(
         path="scripts/restore.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-ok: pinned floor string
+        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="a restore unpacks into the wrong directory and the stack never sees it",
     ),
     Sentinel(
         path="scripts/verify/smoke-onprem.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-ok: pinned floor string
+        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the smoke check reports a healthy install as missing",
     ),
     Sentinel(
         path="scripts/set-version.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-ok: pinned floor string
+        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="a version bump edits an .env in an empty directory and reports success",
     ),
     Sentinel(
-        path="tools/memclawctl/src/memclawctl/cli.py",  # legacy-name-ok: the path of the pinned file
-        text='os.environ.get("MEMCLAW_HOME", "/opt/memclaw")',  # legacy-name-ok: pinned floor string
+        path="tools/memclawctl/src/memclawctl/cli.py",  # legacy-name-floor: the pinned file's path
+        text='os.environ.get("MEMCLAW_HOME", "/opt/memclaw")',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the operator CLI's backup, restore, upgrade and rollback use the wrong root",
     ),
     Sentinel(
-        path="tools/memclawctl/src/memclawctl/support.py",  # legacy-name-ok: the path of the pinned file
-        text='os.environ.get("MEMCLAW_HOME", "/opt/memclaw")',  # legacy-name-ok: pinned floor string
+        path="tools/memclawctl/src/memclawctl/support.py",  # legacy-name-floor: the pinned file's path
+        text='os.environ.get("MEMCLAW_HOME", "/opt/memclaw")',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="a support bundle is collected from the wrong install root, or comes back empty",
     ),
@@ -258,57 +264,57 @@ SENTINELS: tuple[Sentinel, ...] = (
     # value together: the prefix alone also appears in four comments.
     Sentinel(
         path="docker-compose.airgap.yml",
-        text='image: "memclaw-onprem/platform-storage:',  # legacy-name-ok: pinned floor string
+        text='image: "memclaw-onprem/platform-storage:',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="an air-gapped upgrade cannot resolve an image the tarball already holds",
     ),
     Sentinel(
         path="docker-compose.embedder.airgap.yml",
-        text='image: "memclaw-onprem/core-api-embedder:',  # legacy-name-ok: pinned floor string
+        text='image: "memclaw-onprem/core-api-embedder:',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the offline embedder overlay stops matching the loaded image",
     ),
     Sentinel(
         path="install.sh",
-        text='docker image inspect "memclaw-onprem/core-api-embedder:',  # legacy-name-ok: pinned floor string
+        text='docker image inspect "memclaw-onprem/core-api-embedder:',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the --offline preflight passes an install whose embedder was never loaded",
     ),
     # -- Cross-repo data contracts. Nothing in THIS repo fails when they go. ---
     Sentinel(
-        path="tools/memclawctl/src/memclawctl/support.py",  # legacy-name-ok: the path of the pinned file
-        text='"collector": "memclawctl"',  # legacy-name-ok: pinned floor string
+        path="tools/memclawctl/src/memclawctl/support.py",  # legacy-name-floor: the pinned file's path
+        text='"collector": "memclawctl"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the support backend stops recognising every bundle already in flight",
     ),
     Sentinel(
-        path="tools/memclawctl/src/memclawctl/support.py",  # legacy-name-ok: the path of the pinned file
-        text='version("caura-memclawctl")',  # legacy-name-ok: pinned floor string
+        path="tools/memclawctl/src/memclawctl/support.py",  # legacy-name-floor: the pinned file's path
+        text='version("caura-memclawctl")',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="bundle building raises PackageNotFoundError if the distribution is renamed alone",
     ),
     Sentinel(
-        path="tools/memclawctl/pyproject.toml",  # legacy-name-ok: the path of the pinned file
-        text='name = "caura-memclawctl"',  # legacy-name-ok: pinned floor string
+        path="tools/memclawctl/pyproject.toml",  # legacy-name-floor: the pinned file's path
+        text='name = "caura-memclawctl"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the distribution name and the runtime version() lookup stop agreeing",
     ),
     Sentinel(
         path="docker-compose.yml",
-        text="LICENSE_FILE: /etc/memclaw/license.key",  # legacy-name-ok: pinned floor string
+        text="LICENSE_FILE: /etc/memclaw/license.key",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="images built in other repos look for a licence at a path nothing mounts",
     ),
     Sentinel(
         path="docker-compose.yml",
-        text="- ./license:/etc/memclaw",  # legacy-name-ok: pinned floor string
+        text="- ./license:/etc/memclaw",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the licence bind mount stops landing where the platform images read it",
     ),
     # -- Rollback state written on customer disk. ------------------------------
     Sentinel(
         path="upgrade.sh",
-        text="> .memclaw-prev-version",  # legacy-name-ok: pinned floor string
+        text="> .memclaw-prev-version",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="rollback cannot find the version marker, so a bad upgrade cannot be undone",
     ),
@@ -330,37 +336,37 @@ SENTINELS: tuple[Sentinel, ...] = (
     # its own rollback path cannot then find.
     Sentinel(
         path="upgrade.sh",
-        text="v=$(_env_key MEMCLAW_VERSION)",  # legacy-name-ok: pinned floor string
+        text="v=$(_env_key MEMCLAW_VERSION)",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="upgrade refuses every install whose .env predates the new version key",
     ),
     Sentinel(
         path="upgrade.sh",
-        text="_TLS_MODE=$(_GET MEMCLAW_TLS_MODE)",  # legacy-name-ok: pinned floor string
+        text="_TLS_MODE=$(_GET MEMCLAW_TLS_MODE)",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="an upgrade drops the letsencrypt overlay and silently stops serving TLS",
     ),
     Sentinel(
         path="docker-compose.yml",
-        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-ok: pinned floor string
+        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="every existing install resolves its whole stack to :latest instead of its pinned tag",
     ),
     Sentinel(
         path="docker-compose.airgap.yml",
-        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-ok: pinned floor string
+        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="an air-gapped stack looks for :latest images the customer's tarball does not hold",
     ),
     Sentinel(
         path="docker-compose.embedder.yml",
-        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-ok: pinned floor string
+        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the embedder overlay stops matching the tag the rest of the stack runs",
     ),
     Sentinel(
         path="docker-compose.embedder.airgap.yml",
-        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-ok: pinned floor string
+        text="${MEMCLAW_VERSION:-latest}",  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the offline embedder overlay stops matching the loaded image's tag",
     ),
@@ -377,19 +383,19 @@ SENTINELS: tuple[Sentinel, ...] = (
     # the half that fails a build.
     Sentinel(
         path="docker-compose.yml",
-        text='MEMCLAW_API_URL: "https://${PUBLIC_HOSTNAME',  # legacy-name-ok: pinned floor string
+        text='MEMCLAW_API_URL: "https://${PUBLIC_HOSTNAME',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the frontend loses its API base URL and every dashboard call 404s",
     ),
     Sentinel(
         path="docker-compose.yml",
-        text='MEMCLAW_SITE_URL: "https://${PUBLIC_HOSTNAME',  # legacy-name-ok: pinned floor string
+        text='MEMCLAW_SITE_URL: "https://${PUBLIC_HOSTNAME',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the frontend renders links against the wrong origin",
     ),
     Sentinel(
         path="docker-compose.yml",
-        text='MEMCLAW_BILLING_ENABLED: "false"',  # legacy-name-ok: pinned floor string
+        text='MEMCLAW_BILLING_ENABLED: "false"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="billing UI reappears in an on-prem build where it must stay off",
     ),

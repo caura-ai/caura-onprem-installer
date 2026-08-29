@@ -277,8 +277,8 @@ fi
 # (its default lands further down, next to the generated secrets); this is that
 # pattern applied to the rest.
 _EMBEDDING_PROVIDER_CHOSEN="$EMBEDDING_PROVIDER"   # before the default lands
-MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"  # legacy-name-ok: pinned floor string, and the install root default
-MEMCLAW_VERSION="${MEMCLAW_VERSION:-v2.8.4}"  # legacy-name-ok: the shipped release pin, unchanged
+MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"  # legacy-name-floor: floor, and the install root default
+MEMCLAW_VERSION="${MEMCLAW_VERSION:-v2.8.4}"  # legacy-name-floor: the shipped release pin, unchanged
 OFFLINE="${OFFLINE:-false}"
 SKIP_ADMIN="${SKIP_ADMIN:-false}"
 EMAIL_PROVIDER="${EMAIL_PROVIDER:-log}"

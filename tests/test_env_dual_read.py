@@ -66,8 +66,8 @@ SCANNED = (
     "docker-compose.embedder.yml",
     "docker-compose.embedder.airgap.yml",
     "docker-compose.tls-letsencrypt.yml",
-    "tools/memclawctl/src/memclawctl/cli.py",  # legacy-name-ok: the path of the shipped CLI, which is floor
-    "tools/memclawctl/src/memclawctl/support.py",  # legacy-name-ok: the path of the shipped CLI, which is floor
+    "tools/memclawctl/src/memclawctl/cli.py",  # legacy-name-floor: the shipped CLI's path
+    "tools/memclawctl/src/memclawctl/support.py",  # legacy-name-floor: the shipped CLI's path
 )
 
 # Old-brand names this repo WRITES but never reads, so there is nothing here to
@@ -80,9 +80,9 @@ SCANNED = (
 # A name may only sit here because nothing in this repo READS it — which the
 # test below re-derives rather than trusting.
 WRITE_ONLY = {
-    "MEMCLAW_API_URL",  # legacy-name-ok: pinned write-only name, read by the app image
-    "MEMCLAW_SITE_URL",  # legacy-name-ok: pinned write-only name, read by the app image
-    "MEMCLAW_BILLING_ENABLED",  # legacy-name-ok: pinned write-only name, read by the app image
+    "MEMCLAW_API_URL",  # legacy-name-floor: write-only name, read by the app image
+    "MEMCLAW_SITE_URL",  # legacy-name-floor: write-only name, read by the app image
+    "MEMCLAW_BILLING_ENABLED",  # legacy-name-floor: write-only name, read by the app image
 }
 
 # Shapes that constitute READING a name rather than merely writing or naming it:
@@ -315,7 +315,7 @@ def test_install_defaults_take_the_first_non_empty_name(
 
 def test_install_defaults_still_apply_when_neither_name_is_set():
     """The shipped defaults are untouched by the dual-read."""
-    assert _resolve_defaults({}, "MEMCLAW_HOME") == "/opt/memclaw"  # legacy-name-ok: test pins the floor install path
+    assert _resolve_defaults({}, "MEMCLAW_HOME") == "/opt/memclaw"  # legacy-name-floor: the floor install path
     assert _resolve_defaults({}, "TLS_MODE") == "self-signed"
     assert _resolve_defaults({}, "EMAIL_PROVIDER") == "log"
 
@@ -662,7 +662,7 @@ def test_install_conf_blank_old_key_does_not_blank_the_install_root(tmp_path):
     "present and blank" is not hypothetical here — it is what the template does.
     """
     body = "memclaw_home =\n"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-    assert _parse_conf(tmp_path, body, "MEMCLAW_HOME") == "/opt/memclaw"  # legacy-name-ok: test pins the floor install path
+    assert _parse_conf(tmp_path, body, "MEMCLAW_HOME") == "/opt/memclaw"  # legacy-name-floor: the floor install path
 
 
 def test_both_config_spellings_have_identical_precedence(tmp_path):
@@ -701,7 +701,7 @@ def test_both_config_spellings_have_identical_precedence(tmp_path):
         )
         # And neither spelling may be silently inert — the failure mode of the
         # naive precedence "fix", which leaves the default in place.
-        assert with_new != "/opt/memclaw", (  # legacy-name-ok: test pins the floor install path
+        assert with_new != "/opt/memclaw", (  # legacy-name-floor: the floor install path
             f"{new_key} was dropped and the default survived"
         )
 
@@ -717,10 +717,10 @@ def _import_cli_defaults(env: dict[str, str]) -> dict[str, str]:
     and a reload inside this process would leave a half-initialised module
     behind for every later test.
     """
-    src = REPO_ROOT / "tools" / "memclawctl" / "src"  # legacy-name-ok: the path of the shipped CLI, which is floor
+    src = REPO_ROOT / "tools" / "memclawctl" / "src"  # legacy-name-floor: the shipped CLI's path
     code = (
         "import json\n"
-        "from memclawctl import cli, support\n"  # legacy-name-ok: the path of the shipped CLI, which is floor
+        "from memclawctl import cli, support\n"  # legacy-name-floor: the shipped CLI's path
         "print(json.dumps({'url': cli.DEFAULT_URL, 'admin_key': cli.DEFAULT_ADMIN_KEY,"
         " 'home': str(cli.DEFAULT_HOME), 'support_home': str(support.DEFAULT_HOME),"
         " 'endpoint': support.DEFAULT_SUPPORT_ENDPOINT}))"
@@ -776,7 +776,7 @@ def test_operator_cli_defaults_unchanged_when_neither_name_is_set():
     got = _import_cli_defaults({})
     assert got["url"] == "http://localhost"
     assert got["admin_key"] == ""
-    assert got["home"] == "/opt/memclaw"  # legacy-name-ok: test pins the floor install path
+    assert got["home"] == "/opt/memclaw"  # legacy-name-floor: the floor install path
     assert got["endpoint"] == "https://support.caura.ai/api/onprem/support"
 
 
@@ -847,10 +847,10 @@ def test_the_api_key_option_actually_uses_a_list():
     putting it on sys.path here would leak into the two gate test files that
     share this runner.
     """
-    src = REPO_ROOT / "tools" / "memclawctl" / "src"  # legacy-name-ok: the path of the shipped CLI, which is floor
+    src = REPO_ROOT / "tools" / "memclawctl" / "src"  # legacy-name-floor: the shipped CLI's path
     code = (
         "import json\n"
-        "from memclawctl import cli\n"  # legacy-name-ok: the path of the shipped CLI, which is floor
+        "from memclawctl import cli\n"  # legacy-name-floor: the shipped CLI's path
         "out = {}\n"
         "for name, cmd in cli.memory_group.commands.items():\n"
         "    for p in cmd.params:\n"
@@ -1490,7 +1490,7 @@ def test_a_cli_flag_beats_the_config_file(tmp_path, key, var, flag):
 def test_the_shipped_default_still_lands_when_nothing_sets_the_key(tmp_path, key, var, flag):
     """Deferring the defaults must not have dropped them."""
     expected = {
-        "MEMCLAW_HOME": "/opt/memclaw",  # legacy-name-ok: the floor install path
+        "MEMCLAW_HOME": "/opt/memclaw",  # legacy-name-floor: the floor install path
         "MEMCLAW_VERSION": "v2.8.4",  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
         "EMAIL_PROVIDER": "log",
         "EMBEDDING_PROVIDER": "local",
