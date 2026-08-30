@@ -99,7 +99,7 @@ Usage::
 
     scripts/legacy_name_ratchet.py                     # compare against origin/main
     scripts/legacy_name_ratchet.py --base <tree-ish>
-    scripts/legacy_name_ratchet.py --report            # counts only, never fails
+    scripts/legacy_name_ratchet.py --report            # counts + change split; never fails
 """
 
 from __future__ import annotations
@@ -109,7 +109,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
-from typing import NamedTuple
+from typing import NamedTuple, overload
 
 # The legacy brand. Matched case-insensitively, so every casing in the tree
 # counts — prose, identifiers and SCREAMING_SNAKE env names alike. This is the
@@ -329,7 +329,7 @@ def _git(args: list[str]) -> str:
 
 
 def _grep(
-    tree: str | None, pathspec: str = ":/"
+    tree: str | None, pathspec: str | list[str] = ":/"
 ) -> list[tuple[str, str, str, str | None]]:
     """``(path, lineno, text, kind)`` for every matching line.
 
@@ -356,7 +356,8 @@ def _grep(
     args = ["git", "grep", "-I", "-i", "-n", "-z", "--full-name", "-e", LEGACY_NAME]
     if tree is not None:
         args.append(tree)
-    args += ["--", pathspec]
+    args.append("--")
+    args += [pathspec] if isinstance(pathspec, str) else pathspec
 
     prefix = f"{tree}:" if tree is not None else ""
 
@@ -505,7 +506,7 @@ class Scan(NamedTuple):
         )
 
 
-def scan(tree: str | None) -> Scan:
+def scan(tree: str | None, pathspec: str | list[str] = ":/") -> Scan:
     """Read a tree once. ``tree=None`` is the working tree."""
     by_file: dict[str, Counter[str]] = {}
     total: Counter[str] = Counter()
@@ -513,7 +514,7 @@ def scan(tree: str | None) -> Scan:
     # Not split by kind, and it does not want to be: this is the tally the gate
     # decides on, and the decision is exemption itself rather than which claim
     # was made. Only the report reads the kind.
-    for path, _, text, kind in _grep(tree):
+    for path, _, text, kind in _grep(tree, pathspec):
         stripped = text.strip()
         if kind is not None:
             exempt_by_file.setdefault(path, Counter())[stripped] += 1
@@ -521,6 +522,264 @@ def scan(tree: str | None) -> Scan:
         by_file.setdefault(path, Counter())[stripped] += 1
         total[stripped] += 1
     return Scan(by_file, total, exempt_by_file)
+
+
+def _updated_scan(before: Scan, tree: str, paths: list[str]) -> Scan:
+    """Apply one commit by rescanning only its changed paths."""
+    if not paths:
+        return before
+
+    by_file = before.by_file.copy()
+    exempt_by_file = before.exempt_by_file.copy()
+    total = before.total.copy()
+    for path in paths:
+        total.subtract(by_file.pop(path, Counter()))
+        exempt_by_file.pop(path, None)
+
+    changed = scan(tree, [_literal(path) for path in paths])
+    by_file.update(changed.by_file)
+    exempt_by_file.update(changed.exempt_by_file)
+    total.update(changed.total)
+    return Scan(by_file, +total, exempt_by_file)
+
+
+def _transition_paths(before: str, after: str | None = None) -> list[str]:
+    """Tracked paths changed between two trees, or from before to worktree."""
+    args = ["git", "diff", "--name-only", "-z", "--no-renames", before]
+    if after is not None:
+        args.append(after)
+    args.append("--")
+    return [path for path in _git(args).split("\0") if path]
+
+
+class _ChangeSummary(NamedTuple):
+    """Gross causes behind the non-exempt count's net movement."""
+
+    added: int
+    annotated: int
+    removed: int
+    moved: int
+    net: int
+
+
+# Ordinary gate runs must stay bounded. A caller asking for --report is
+# explicitly asking for the archaeology and remains uncapped.
+_GATE_REPLAY_LIMIT = 64
+
+
+def _only_inserts(before: str, after: str) -> bool:
+    """Whether deleting one contiguous insertion from ``after`` yields ``before``."""
+    inserted = len(after) - len(before)
+    if inserted <= 0:
+        return False
+    mismatch = next(
+        (
+            i
+            for i, (old, new) in enumerate(zip(before, after, strict=False))
+            if old != new
+        ),
+        len(before),
+    )
+    return after[mismatch + inserted :] == before[mismatch:]
+
+
+_LineCounts = dict[tuple[str, str], int]
+
+
+def _transition_delta(
+    base: Scan, head: Scan
+) -> tuple[_LineCounts, _LineCounts, _LineCounts]:
+    """Lines that left or entered the ratcheted and exempt populations."""
+    lost = {
+        (path, text): n
+        for path, lines in base.by_file.items()
+        for text, n in (lines - head.by_file.get(path, Counter())).items()
+    }
+    gained = {
+        (path, text): n
+        for path, lines in head.by_file.items()
+        for text, n in (lines - base.by_file.get(path, Counter())).items()
+    }
+    gained_exempt = {
+        (path, text): n
+        for path, lines in head.exempt_by_file.items()
+        for text, n in (lines - base.exempt_by_file.get(path, Counter())).items()
+    }
+    return lost, gained, gained_exempt
+
+
+def _match_annotations(lost: _LineCounts, gained_exempt: _LineCounts) -> int:
+    """Consume losses that gained a marker in the same transition."""
+    annotated = 0
+    for (destination, marked), available in sorted(gained_exempt.items()):
+        candidates = sorted(
+            (key for key, n in lost.items() if n and _only_inserts(key[1], marked)),
+            key=lambda key: (key[0] != destination, len(marked) - len(key[1]), key),
+        )
+        for key in candidates:
+            matched = min(available, lost[key])
+            annotated += matched
+            available -= matched
+            lost[key] -= matched
+            if not available:
+                break
+    return annotated
+
+
+def _match_moves(lost: _LineCounts, gained: _LineCounts) -> int:
+    """Consume byte-identical lines that reappeared in another file."""
+    moved = 0
+    for (destination, text), available in sorted(gained.items()):
+        sources = sorted(
+            key
+            for key, n in lost.items()
+            if n and key[0] != destination and key[1] == text
+        )
+        for key in sources:
+            matched = min(available, lost[key])
+            moved += matched
+            available -= matched
+            lost[key] -= matched
+            gained[(destination, text)] -= matched
+            if not available:
+                break
+    return moved
+
+
+def _match_readditions(lost: _LineCounts, gained: _LineCounts) -> int:
+    """Consume lines that left and later returned to the same file."""
+    readded = 0
+    for key, available in sorted(gained.items()):
+        matched = min(available, lost.get(key, 0))
+        readded += matched
+        lost[key] = lost.get(key, 0) - matched
+        gained[key] -= matched
+    return readded
+
+
+def _transition_summary(base: Scan, head: Scan) -> _ChangeSummary:
+    """Classify one tree-to-tree transition without affecting the gate."""
+    lost, gained, gained_exempt = _transition_delta(base, head)
+    annotated = _match_annotations(lost, gained_exempt)
+    moved = _match_moves(lost, gained)
+
+    return _ChangeSummary(
+        added=sum(gained.values()),
+        annotated=annotated,
+        removed=sum(lost.values()),
+        moved=moved,
+        net=sum(head.counts().values()) - sum(base.counts().values()),
+    )
+
+
+@overload
+def _change_summary(
+    base_ref: str,
+    base: Scan,
+    head: Scan,
+    *,
+    max_commits: None = None,
+) -> _ChangeSummary: ...
+
+
+@overload
+def _change_summary(
+    base_ref: str,
+    base: Scan,
+    head: Scan,
+    *,
+    max_commits: int,
+) -> _ChangeSummary | None: ...
+
+
+def _change_summary(
+    base_ref: str,
+    base: Scan,
+    head: Scan,
+    *,
+    max_commits: int | None = None,
+) -> _ChangeSummary | None:
+    """Classify each first-parent step, falling back to the two endpoints.
+
+    Replaying matters when a line is annotated and a later commit removes it:
+    by then it is exempt, so that later edit is exemption churn rather than a
+    removal from the ratcheted population. Endpoint arithmetic loses that order.
+
+    Intermediate states are updated by scanning only the paths each commit
+    changed. This retains exact chronology without re-grepping the whole tree
+    per commit. A range with at most one non-empty transition has no intermediate
+    state to recover and reuses the endpoint scans.
+
+    None means a bounded caller exceeded max_commits. It must omit the split
+    rather than print the cheaper endpoint classification as exact.
+    """
+    endpoint = _transition_summary(base, head)
+    try:
+        base_oid = _git(["git", "rev-parse", f"{base_ref}^{{commit}}"]).strip()
+        head_oid = _git(["git", "rev-parse", "HEAD^{commit}"]).strip()
+        rev_list_args = ["git", "rev-list", "--first-parent", "--reverse"]
+        if max_commits is not None:
+            rev_list_args.append(f"--max-count={max_commits + 1}")
+        rev_list_args.append(f"{base_oid}..{head_oid}")
+        commits = _git(rev_list_args).splitlines()
+        if max_commits is not None and len(commits) > max_commits:
+            return None
+        transitions: list[tuple[str, list[str]]] = []
+        previous = base_oid
+        for commit in commits:
+            parent = _git(["git", "rev-parse", f"{commit}^1"]).strip()
+            if parent != previous:
+                return endpoint
+            transitions.append((commit, _transition_paths(previous, commit)))
+            previous = commit
+        if previous != head_oid:
+            return endpoint
+
+        worktree_paths = _transition_paths("HEAD")
+        if sum(bool(paths) for _, paths in transitions) + bool(worktree_paths) <= 1:
+            return endpoint
+
+        # Annotation means a marker was added without first removing the line,
+        # so it is paired only inside one transition. A move can be written as
+        # either delete-then-add or copy-then-delete, so residual gains and
+        # losses wait for a counterpart across transitions. Same-path returns
+        # are add/remove churn rather than moves and take precedence.
+        lost_pool: _LineCounts = {}
+        gained_pool: _LineCounts = {}
+        annotated = moved = readded = 0
+        current = base
+        replay_steps: list[tuple[str | None, list[str]]] = list(transitions)
+        if worktree_paths:
+            replay_steps.append((None, worktree_paths))
+        for index, (tree, paths) in enumerate(replay_steps):
+            if tree is None or index == len(replay_steps) - 1:
+                following = head
+            else:
+                following = _updated_scan(current, tree, paths)
+
+            lost, gained, gained_exempt = _transition_delta(current, following)
+            annotated += _match_annotations(lost, gained_exempt)
+            for key, count in lost.items():
+                lost_pool[key] = lost_pool.get(key, 0) + count
+            for key, count in gained.items():
+                gained_pool[key] = gained_pool.get(key, 0) + count
+            readded += _match_readditions(lost_pool, gained_pool)
+            moved += _match_moves(lost_pool, gained_pool)
+            current = following
+    except (OSError, RuntimeError):
+        return endpoint
+
+    return _ChangeSummary(
+        added=readded + sum(gained_pool.values()),
+        annotated=annotated,
+        removed=readded + sum(lost_pool.values()),
+        moved=moved,
+        net=sum(head.counts().values()) - sum(base.counts().values()),
+    )
+
+
+def _move_label(n: int) -> str:
+    return "excused move" if n == 1 else "excused moves"
 
 
 def _mint_budget(head_total: Counter[str], base_total: Counter[str]) -> Counter[str]:
@@ -949,28 +1208,48 @@ def main() -> int:
     parser.add_argument(
         "--base", default="origin/main", help="tree-ish to compare against"
     )
-    parser.add_argument("--report", action="store_true", help="print counts and exit 0")
+    parser.add_argument(
+        "--report", action="store_true", help="print counts and change split; exit 0"
+    )
     args = parser.parse_args()
 
-    # Both scans under one guard. A bad ``--base`` is the likely cause, but the
-    # working-tree scan reaches git the same way and can fail the same way, and
-    # leaving it bare would surface that as a traceback and exit 1 — which in this
-    # script means "ran, found new names". A gate that cannot run must never be
-    # mistaken for a gate that failed you. Exit 2 says it could not run.
+    # Scan the working tree first so report mode can retain its "counts never
+    # fail" contract even when its optional comparison base is unreadable.
     try:
         head_scan = scan(None)
-        if args.report:
-            head = head_scan.counts()
-            print(f"{sum(head.values())} lines across {len(head)} files")
-            for path, n in sorted(head.items(), key=lambda kv: (-kv[1], kv[0])):
-                print(f"  {n:>4}  {path}")
-            return 0
-        base_scan = scan(args.base)
     except RuntimeError as exc:
         print(exc, file=sys.stderr)
         return 2
 
-    head, base = head_scan.counts(), base_scan.counts()
+    head = head_scan.counts()
+    if args.report:
+        print(f"{sum(head.values())} lines across {len(head)} files")
+        for path, n in sorted(head.items(), key=lambda kv: (-kv[1], kv[0])):
+            print(f"  {n:>4}  {path}")
+
+    # A bad base must still be exit 2 for the gate. In report mode it only makes
+    # the change split unavailable; the current-tree inventory above is valid.
+    try:
+        base_scan = scan(args.base)
+    except RuntimeError as exc:
+        if args.report:
+            print(f"Change from {args.base} unavailable: {exc}", file=sys.stderr)
+            return 0
+        print(exc, file=sys.stderr)
+        return 2
+
+    base = base_scan.counts()
+
+    if args.report:
+        report_summary = _change_summary(args.base, base_scan, head_scan)
+        print(
+            f"Change from {args.base}: {report_summary.added} added, "
+            f"{report_summary.annotated} annotated, "
+            f"{report_summary.removed} removed, "
+            f"{report_summary.moved} {_move_label(report_summary.moved)} "
+            f"({report_summary.net:+d} net)."
+        )
+        return 0
 
     if not head and not base:
         # A pathspec that matches nothing exits 1 with an empty stderr, exactly
@@ -985,9 +1264,6 @@ def main() -> int:
             "this gate should be deleted along with the last of the old names."
         )
         return 1
-
-    _report_new_exemptions(base_scan.exempt(), head_scan.exempt(), args.base)
-    _report_removed_exemptions(base_scan.exempt_by_file, head_scan.exempt_by_file)
 
     head_by_file, base_by_file = head_scan.by_file, base_scan.by_file
     budget = _mint_budget(head_scan.total, base_scan.total)
@@ -1011,16 +1287,41 @@ def main() -> int:
         if minted:
             grown[path] = (before, n, minted)
 
+    _report_new_exemptions(base_scan.exempt(), head_scan.exempt(), args.base)
+    _report_removed_exemptions(base_scan.exempt_by_file, head_scan.exempt_by_file)
     _report_excused_moves(excused, base_by_file, head_by_file)
 
     if not grown:
-        removed = sum(max(0, c - head.get(p, 0)) for p, c in base.items())
-        net = sum(head.values()) - sum(base.values())
-        print(
-            f"No new lines. {removed} removed by this change ({net:+d} net)."
-            if removed
-            else "No new lines."
+        gate_summary = _change_summary(
+            args.base,
+            base_scan,
+            head_scan,
+            max_commits=_GATE_REPLAY_LIMIT,
         )
+        if gate_summary is None:
+            print(
+                "No new lines fail the gate. Change split omitted: the range exceeds the "
+                f"{_GATE_REPLAY_LIMIT}-commit gate replay limit; run --report "
+                "for the exact split."
+            )
+            return 0
+        if gate_summary.added:
+            print(
+                f"No new lines fail the gate. {gate_summary.added} added, "
+                f"{gate_summary.annotated} annotated, "
+                f"{gate_summary.removed} removed, "
+                f"{gate_summary.moved} {_move_label(gate_summary.moved)} "
+                f"({gate_summary.net:+d} net)."
+            )
+        elif gate_summary.annotated or gate_summary.removed or gate_summary.moved:
+            print(
+                f"No new lines. {gate_summary.annotated} annotated, "
+                f"{gate_summary.removed} removed, {gate_summary.moved} "
+                f"{_move_label(gate_summary.moved)} "
+                f"({gate_summary.net:+d} net)."
+            )
+        else:
+            print("No new lines.")
         return 0
 
     print(f"This change adds the legacy name in {len(grown)} file(s).\n")
