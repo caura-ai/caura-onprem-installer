@@ -1,7 +1,7 @@
 # Security model — Caura on-prem
 
 Reference for customer CISOs, SOC teams, and auditors. Scope: the
-on-prem deployment as shipped by this bundle, not the memclaw.net SaaS.
+on-prem deployment as shipped by this bundle, not Caura's hosted service.
 
 ## Trust boundaries
 
@@ -112,7 +112,7 @@ When enabled:
 | Stolen API key | Keys are scoped per-tenant; rotation via `memclawctl issue-api-key`; revoke via admin-api |
 | Token exfiltration via logs | JWTs + API keys are masked in structured logs (prefix-only) |
 | Phone-home replay / spoof | HMAC-SHA256 over raw body with a key unique per-license; constant-time verify on CauraOps side |
-| Malicious plugin source | `install-plugin` / `plugin-source` serve files from the committed `memclaw/plugin/` tree — verify the `plugin-source-hash` matches on the client if you want an integrity gate |
+| Malicious plugin source | `install-plugin` / `plugin-source` serve files from the committed `plugin/` tree — verify the `plugin-source-hash` matches on the client if you want an integrity gate |
 | Gateway bypass | All `/api/*` routes are behind the single gateway; services are on an internal Docker network with no published ports by default (only `gateway:80` is exposed) |
 | Privilege escalation within tenant | RBAC: `role ∈ {owner, admin, member}`; admin-api enforces org_role on every mutation; superadmin is cross-tenant only via explicit `super_admin` JWT claim |
 
@@ -135,7 +135,7 @@ When enabled:
 Not formally certified. Architecture is compatible with:
 - **SOC 2 Type II**: audit trail (`platform-audit-api` + `enterprise.audit_log`),
   RBAC, at-rest encryption (customer-managed), password hashing.
-- **HIPAA**: BAA needed; on-prem removes the memclaw.net data-sharing
+- **HIPAA**: BAA needed; on-prem removes the hosted-service data-sharing
   boundary, but the customer assumes all PHI responsibilities.
 - **FIPS 140-2**: Python `cryptography` + `python-jose` use OpenSSL;
   use a FIPS-validated OpenSSL build in the container base image if

@@ -280,7 +280,7 @@ _DEFAULTS = _extract_block(
 _APPLY_DEFAULTS = _extract_block(
     "install.sh",
     "# ── Apply defaults ─────────────────────────────────────────────────────────",
-    "# Re-export in MEMCLAW_* form so sudo -E preserves them into the child.",  # legacy-name-ok: test anchors on the old spelling, which rule 3 keeps working
+    "# Re-export the resolved values so sudo -E preserves them into the child.",
 )
 
 
@@ -613,7 +613,7 @@ def _parse_conf(tmp_path: Path, body: str, var: str) -> str:
     block = _extract_block(
         "install.sh",
         "# ── Apply config file (lower precedence than CLI/env) ──────────────────────",
-        "# Re-export in MEMCLAW_* form so sudo -E preserves them into the child.",  # legacy-name-ok: test anchors on the old spelling, which rule 3 keeps working
+        "# Re-export the resolved values so sudo -E preserves them into the child.",
     )
     script = (
         "set -euo pipefail\n"

@@ -21,7 +21,7 @@
 #   8. Rebuild gateway (local build).
 #   9. Rolling `compose up -d`.
 #  10. Poll healthchecks with a timeout. On failure: auto-rollback (restore
-#      previous MEMCLAW_VERSION, `compose up -d`), report which service
+#      previous image version, `compose up -d`), report which service
 #      broke, exit non-zero.
 #
 # Exit codes:
@@ -60,7 +60,7 @@ if [ -z "$_reexec_guard" ] \
         || [ ! -r "${BASH_SOURCE[0]:-$0}" ]; }; then
   _src="${MEMCLAW_UPGRADE_URL:-https://onprem.caura.ai/upgrade.sh}"
   _src="${CAURA_UPGRADE_URL:-$_src}"
-  _tmp=$(mktemp /tmp/memclaw-upgrade.XXXXXX.sh)
+  _tmp=$(mktemp /tmp/caura-upgrade.XXXXXX.sh)
   if ! curl -fsSL "$_src" -o "$_tmp"; then
     echo "ERROR: failed to download $_src for local re-exec" >&2
     exit 1
@@ -111,7 +111,7 @@ resolve_target_version() {
     return
   fi
   # :latest is a tag; we can't deref digest → tag without registry-crawling.
-  # Keep behaviour simple: MEMCLAW_VERSION=latest in .env is legal but
+  # Keep behaviour simple: a version value of `latest` in .env is legal but
   # customer-facing upgrade is always explicit. Refuse if --to is missing.
   die "--to <version> is required (e.g. --to v1.0.0-rc2). Use 'latest' to pin to the floating tag." 2
 }
@@ -227,7 +227,7 @@ cd "$MEMCLAW_HOME"
 # Reconstruct the same -f overlays install.sh chose, so upgrade preserves
 # the customer's TLS / embedder / airgap selections instead of silently
 # downgrading to the bare docker-compose.yml. Read flags from .env:
-#   MEMCLAW_TLS_MODE=letsencrypt → -f docker-compose.tls-letsencrypt.yml
+#   TLS mode `letsencrypt` → -f docker-compose.tls-letsencrypt.yml
 #   EMBEDDING_PROVIDER=local + no remote keys → -f docker-compose.embedder.yml
 COMPOSE_FILES=(-f docker-compose.yml)
 # Read $1 from .env; print empty + return 0 when the key is missing,
@@ -235,7 +235,7 @@ COMPOSE_FILES=(-f docker-compose.yml)
 # script aborting on a no-match. Without `|| true`, grep's exit 1
 # propagates through pipefail and aborts the whole upgrade — which is
 # exactly what bit upgrades from older rc's that pre-date the
-# MEMCLAW_TLS_MODE / EMBEDDING_PROVIDER env keys.
+# the TLS-mode / embedding-provider env keys.
 _GET() {
   grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true
 }
@@ -275,8 +275,8 @@ if [ "$SKIP_BACKUP" != "true" ]; then
   # file uses (DB/USER/PASSWORD env inside the container).
   if ! docker compose exec -T postgres \
        pg_dump -Fc -U "${POSTGRES_USER:-memclaw}" "${POSTGRES_DB:-memclaw}" \
-       >"$BACKUP_PATH" 2>/tmp/memclaw-pgdump.err; then
-    warn "pg_dump failed — see /tmp/memclaw-pgdump.err"
+       >"$BACKUP_PATH" 2>/tmp/caura-pgdump.err; then
+    warn "pg_dump failed — see /tmp/caura-pgdump.err"
     rm -f "$BACKUP_PATH"
     die "Refusing to continue without a backup. Pass --no-backup to override." 6
   fi
