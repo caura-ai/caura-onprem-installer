@@ -210,7 +210,7 @@ location ^~ /api/agent-keys {
 #      the two rules don't fight.
 # NB2: /api/settings is NOT in this list. The frontend's "Tenant
 #      Settings" page calls /api/settings?tenant_id=… and that handler
-#      lives on core-api (memclaw/core-api routes/settings.py), not
+#      lives on core-api (routes/settings.py), not
 #      admin-api (which only has /admin/settings + /security-audit/settings).
 #      Routing /api/settings here would 404. The /api/ catchall below
 #      forwards it to core-api correctly.

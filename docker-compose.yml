@@ -5,7 +5,7 @@
 # which swaps the image references to locally-loaded tags.
 #
 # Pin image digests in the release tarball; the :<version> tag here is
-# rewritten by install.sh at run time based on the customer's MEMCLAW_VERSION.
+# rewritten by install.sh at run time based on the customer's configured version.
 
 x-logging: &default-logging
   driver: json-file

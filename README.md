@@ -1,6 +1,6 @@
 # Caura Enterprise — On-Prem Deployment
 
-> **MemClaw is now Caura** — same product, one name. All installed-machine  <!-- legacy-name-ok: the rename callout has to name the old brand -->
+> To protect existing deployments, installed-machine
 > identifiers (`/etc/memclaw`, `memclaw-*` images, `MEMCLAW_*` vars, the  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
 > `memclaw` postgres role) are unchanged, permanently: existing installs  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
 > need nothing.

@@ -284,7 +284,7 @@ SKIP_ADMIN="${SKIP_ADMIN:-false}"
 EMAIL_PROVIDER="${EMAIL_PROVIDER:-log}"
 EMBEDDING_PROVIDER="${EMBEDDING_PROVIDER:-local}"
 
-# Re-export in MEMCLAW_* form so sudo -E preserves them into the child.
+# Re-export the resolved values so sudo -E preserves them into the child.
 # The child re-parses "$@" anyway (which is the primary mechanism), but
 # this makes the handoff robust against wrappers that sanitise argv
 # (some CI runners, IDE terminals).
@@ -419,7 +419,7 @@ if [ -z "$ADMIN_PASSWORD_RESOLVED" ] && [ -n "$ADMIN_PASSWORD_FILE" ]; then
   ADMIN_PASSWORD_RESOLVED=$(read_file "$ADMIN_PASSWORD_FILE" || true)
 fi
 
-# ── Stage MEMCLAW_HOME ─────────────────────────────────────────────────────
+# ── Stage install root ─────────────────────────────────────────────────────
 mkdir -p "$MEMCLAW_HOME"/{license,nginx,scripts,backups}
 
 # License dir is writable by the container user so the first-run wizard's
@@ -456,7 +456,7 @@ done
 
 # Copy compose + scripts + docs from the bundle dir (wherever install.sh
 # lives). Three modes:
-#   1. MEMCLAW_BUNDLE_DIR explicitly set — use that.
+#   1. An explicit bundle-directory override — use that.
 #   2. install.sh is a real file adjacent to compose files (git clone path).
 #   3. Stdin mode (curl|sudo bash) or standalone file with no adjacent
 #      bundle — fetch the bundle tarball from onprem.caura.ai and extract.
@@ -510,7 +510,7 @@ for d in nginx scripts docs license; do
 done
 
 # ── Materialize TLS certs ──────────────────────────────────────────────────
-# Three paths land cert.pem + key.pem at $MEMCLAW_HOME/tls/, which is
+# Three paths land cert.pem + key.pem in the install root's tls/ directory, which is
 # bind-mounted into the gateway container at /etc/nginx/tls/. The nginx
 # entrypoint detects them and renders the TLS template instead of HTTP.
 mkdir -p "$MEMCLAW_HOME/tls"
@@ -563,7 +563,7 @@ $TLS_DOMAIN {
 }
 EOF
     chmod 0644 "$MEMCLAW_HOME/caddy/Caddyfile"
-    # Make sure no stale cert in /opt/memclaw/tls/ — would confuse the
+    # Make sure no stale cert remains in the install root's tls/ directory — it would confuse the
     # gateway entrypoint into serving its own TLS instead of plain HTTP.
     rm -f "$MEMCLAW_HOME/tls/cert.pem" "$MEMCLAW_HOME/tls/key.pem"
     ;;
