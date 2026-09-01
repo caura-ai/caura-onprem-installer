@@ -1,0 +1,69 @@
+name: Legacy-name engine parity
+
+on:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    name: Legacy-name engine parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the candidate revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: candidate
+          persist-credentials: false
+
+      # Required workflows run in the target repository, so a normal checkout above correctly
+      # gets the candidate but not this workflow's sibling checker. These job-scoped properties
+      # identify the exact source commit that supplied the job, even when the caller is another
+      # repository. In a ruleset run, the target candidate therefore cannot replace the checker
+      # it is being judged by.
+      #
+      # Read the properties through toJSON(job) because actionlint 1.7.12 predates GitHub's two
+      # workflow-identity fields and otherwise reports them as nonexistent (rhysd/actionlint#705).
+      # The explicit repository and SHA checks keep this compatibility shim fail-closed.
+      - name: Identify the parity gate source
+        id: parity-source
+        env:
+          JOB_CONTEXT: ${{ toJSON(job) }}
+        run: |
+          set -euo pipefail
+          repository=$(jq -r '.workflow_repository // empty' <<< "$JOB_CONTEXT")
+          sha=$(jq -r '.workflow_sha // empty' <<< "$JOB_CONTEXT")
+          if [[ "$repository" != "caura-ai/caura-onprem-installer" ]]; then
+            echo "::error::unexpected parity workflow source repository: ${repository:-missing}"
+            exit 1
+          fi
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::invalid parity workflow source SHA: ${sha:-missing}"
+            exit 1
+          fi
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the parity gate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.parity-source.outputs.repository }}
+          ref: ${{ steps.parity-source.outputs.sha }}
+          path: parity-source
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/check-legacy-name-engine-parity.sh
+            scripts/tests/run-ratchet-parity-tests.sh
+            scripts/tests/stubs/curl
+          sparse-checkout-cone-mode: false
+
+      - name: Prove the checker fails closed
+        run: bash parity-source/scripts/tests/run-ratchet-parity-tests.sh
+
+      - name: Compare the vendored engine with caura
+        run: >-
+          parity-source/scripts/check-legacy-name-engine-parity.sh
+          candidate/scripts/legacy_name_ratchet.py
