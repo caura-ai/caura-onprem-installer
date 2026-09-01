@@ -38,6 +38,10 @@ After this workflow is merged to `caura-onprem-installer/main`, create one organ
 - Do not add repository or path filters to the workflow. The ruleset is the target boundary, and
   the workflow must also run for merge queues through `merge_group`.
 
+Keep the parity job's explicit event condition. GitHub requires an explicit job condition when an
+enabled `pull_request` workflow is also used as a ruleset workflow outside its source repository;
+without it, cross-repository `pull_request` ruleset runs are not scheduled.
+
 Ruleset workflows are not added retroactively to pull requests that were already open when the
 rule was created. Open a validation pull request, push a new commit to one, or close and reopen one
 in each of the seven targets. Verify all seven Evaluate runs are green in Rule Insights before

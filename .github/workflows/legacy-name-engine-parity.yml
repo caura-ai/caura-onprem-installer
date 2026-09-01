@@ -9,6 +9,10 @@ permissions:
 
 jobs:
   parity:
+    # GitHub requires an explicit job condition when an enabled pull_request workflow is also
+    # used as a ruleset workflow in repositories other than its source. The event name is set for
+    # every workflow run, while `on` above remains the single event boundary.
+    if: github.event_name != ''
     name: Legacy-name engine parity
     runs-on: ubuntu-latest
     timeout-minutes: 5
