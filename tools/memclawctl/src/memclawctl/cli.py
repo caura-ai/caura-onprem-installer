@@ -55,7 +55,7 @@ def _client(url: str, admin_key: str | None) -> httpx.Client:
     return httpx.Client(base_url=url, headers=headers, timeout=30, verify=False)
 
 
-@click.group(help="Day-2 operations for on-prem Caura (CLI name unchanged).")
+@click.group(help="Day-2 operations for on-prem Caura.")
 @click.option(
     "--url", default=DEFAULT_URL, show_default=True, help="Base URL of the stack."
 )

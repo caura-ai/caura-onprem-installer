@@ -1,5 +1,8 @@
 # memclawctl
 
+Release A also installs `cauractl`; both console entries load this same Click
+command group, while existing runbooks keep their established default.
+
 Day-2 operations CLI for an on-prem Caura deployment. Talks to the
 running stack over HTTP — no direct DB access — so the same tool works
 in connected and air-gapped installs.

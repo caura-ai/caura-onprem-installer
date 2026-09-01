@@ -19,6 +19,14 @@ if str(_SRC) not in sys.path:
 from memclawctl.cli import cli  # noqa: E402
 
 
+def test_console_scripts_share_the_click_group():
+    pyproject = (_HERE.parent / "pyproject.toml").read_text()
+    scripts = pyproject.partition("[project.scripts]")[2].partition("\n[")[0]
+    entrypoint = '"memclawctl.cli:cli"'  # legacy-name-floor: frozen module path
+    assert f"cauractl = {entrypoint}" in scripts
+    assert f"memclawctl = {entrypoint}" in scripts  # legacy-name-ok: permanent CLI alias
+
+
 def test_cli_help_lists_commands():
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
