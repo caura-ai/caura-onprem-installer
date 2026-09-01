@@ -1,0 +1,7 @@
+{
+  "default_base": "origin/main",
+  "release_please_changelogs": false,
+  "mirror_paths": [],
+  "mirror_manifest": null,
+  "marker_inventory_meta_paths": []
+}
