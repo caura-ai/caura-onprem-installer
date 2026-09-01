@@ -40,8 +40,24 @@ After this workflow is merged to `caura-onprem-installer/main`, create one organ
 
 Ruleset workflows are not added retroactively to pull requests that were already open when the
 rule was created. Open a validation pull request, push a new commit to one, or close and reopen one
-in each of the seven targets. Verify all seven Evaluate runs are green in Rule Insights before
-changing the ruleset to **Active**.
+in each of the seven targets.
+
+GitHub documents required-workflow runs in Evaluate mode, but the initial fleet rollout did not
+schedule them after fresh `opened` and `reopened` events. Do not change the source workflow or add
+a no-op job condition solely because an Evaluate check is absent. If Evaluate runs appear, verify
+all seven are green before changing the ruleset to **Active**. Otherwise, use a controlled Active
+canary:
+
+1. Confirm that the source workflow is active on `caura-onprem-installer/main` and that the
+   non-blocking ruleset has the exact repository, default-branch, workflow, and no-bypass scope
+   described above.
+2. Temporarily scope the ruleset to one repository with no open work except its validation pull
+   request, switch it to **Active**, and retrigger that pull request.
+3. Verify the canary passes source identification, immutable source checkout, the fail-closed
+   behavioral test, and the canonical comparison.
+4. Expand the same ruleset to the exact seven repositories, retrigger the remaining validation
+   pull requests, and require all seven runs to pass.
+5. Close every validation pull request without merging it.
 
 The source workflow's behavioral test deliberately changes one byte without changing file length
 and requires the checker to exit 1. Every future merge that changes this workflow, checker, or test
