@@ -105,11 +105,49 @@ docker compose ps
 
 ## Rollback
 
+A rollback is an upgrade toward the older tag, so it goes through `upgrade.sh`
+either way: both spellings of the pinned version key move, a snapshot is taken,
+and the result is health-checked. The success banner prints the route your host
+can take, so after a live upgrade you can paste what it gave you.
+
+**If `upgrade.sh` is on disk**, which it is on any host that has upgraded
+before:
+
 ```bash
 cd /opt/memclaw
-./scripts/set-version.sh v1.0.0   # old tag
-docker compose up -d
+sudo bash ./upgrade.sh --to v1.0.0
 ```
+
+`bash ./upgrade.sh` rather than `./upgrade.sh`: a copy fetched with `curl -o` is
+readable but not executable, and nothing in the install sets the bit.
+
+**Otherwise fetch it.** This needs nothing installed and is what the banner
+falls back to:
+
+```bash
+curl -fsSL https://onprem.caura.ai/upgrade.sh | sudo bash -s -- --to v1.0.0
+```
+
+`-f` matters here rather than being habit: without it, an error page from a
+broken endpoint is piped into `sudo bash` instead of `curl` failing.
+
+**If the operator CLI is installed**, `memclawctl rollback` is a shorthand for  <!-- legacy-name-floor: the shipped CLI's own command; an install whose CLI predates the alias has only this spelling -->
+the first form, and it picks the version for you: it reads the
+`.memclaw-prev-version` marker that `upgrade.sh` writes before it changes  <!-- legacy-name-floor: the on-disk marker file upgrade.sh writes -->
+anything, then re-runs this script with `--to <that version>`. Do not prefix it
+with `sudo` — `upgrade.sh` elevates itself when it cannot reach the Docker
+daemon, whereas `sudo` in front of the CLI looks for the CLI on root's `PATH`,
+where a per-user install is not.
+
+The banner does not try to detect the CLI, for that same reason: it prints while
+running as root, where a per-user install is invisible.
+
+Do not edit the version in `.env` with a `sed`, which older revisions of this
+page suggested. The key has two spellings and an `.env` written before the
+rename carries only one of them, so a `sed` anchored on the other matches
+nothing, exits 0, prints nothing — and `up -d` then re-resolves to the tag
+already running, health checks pass because nothing changed, and the rollback
+reports success without having happened.
 
 **Caveat**: Alembic doesn't auto-downgrade. If the new version shipped a
 destructive migration, rollback requires restoring from the backup you
