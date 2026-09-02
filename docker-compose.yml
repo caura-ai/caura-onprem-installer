@@ -86,8 +86,8 @@ services:
       LICENSE_FILE: /etc/memclaw/license.key
       EMAIL_PROVIDER: "${EMAIL_PROVIDER:-log}"
       EMAIL_API_KEY: "${EMAIL_API_KEY:-}"
-      EMAIL_FROM: "${EMAIL_FROM:-noreply@${PUBLIC_HOSTNAME:-memclaw.local}}"
-      SITE_URL: "${SITE_URL:-https://${PUBLIC_HOSTNAME:-memclaw.local}}"
+      EMAIL_FROM: "${EMAIL_FROM:-noreply@${PUBLIC_HOSTNAME:-caura.local}}"
+      SITE_URL: "${SITE_URL:-https://${PUBLIC_HOSTNAME:-caura.local}}"
       SMTP_HOST: "${SMTP_HOST:-localhost}"
       SMTP_PORT: "${SMTP_PORT:-587}"
       GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID:-}"
@@ -135,8 +135,8 @@ services:
       SCHEDULER_ENABLED: "${SCHEDULER_ENABLED:-false}"
       EMAIL_PROVIDER: "${EMAIL_PROVIDER:-log}"
       EMAIL_API_KEY: "${EMAIL_API_KEY:-}"
-      EMAIL_FROM: "${EMAIL_FROM:-noreply@${PUBLIC_HOSTNAME:-memclaw.local}}"
-      SITE_URL: "${SITE_URL:-https://${PUBLIC_HOSTNAME:-memclaw.local}}"
+      EMAIL_FROM: "${EMAIL_FROM:-noreply@${PUBLIC_HOSTNAME:-caura.local}}"
+      SITE_URL: "${SITE_URL:-https://${PUBLIC_HOSTNAME:-caura.local}}"
       SMTP_HOST: "${SMTP_HOST:-localhost}"
       SMTP_PORT: "${SMTP_PORT:-587}"
       LOG_FORMAT_JSON: "true"
@@ -288,8 +288,8 @@ services:
     environment:
       # Runtime-config shim (Phase 3b): the frontend fetches /env-config.js
       # at load time, so the same image works across customer domains.
-      MEMCLAW_API_URL: "https://${PUBLIC_HOSTNAME:-memclaw.local}"
-      MEMCLAW_SITE_URL: "https://${PUBLIC_HOSTNAME:-memclaw.local}"
+      MEMCLAW_API_URL: "https://${PUBLIC_HOSTNAME:-caura.local}"  # legacy-name-floor: the frozen env var name the shipped frontend reads
+      MEMCLAW_SITE_URL: "https://${PUBLIC_HOSTNAME:-caura.local}"  # legacy-name-floor: the frozen env var name the shipped frontend reads
       MEMCLAW_BILLING_ENABLED: "false"
     depends_on:
       platform-admin-api:
@@ -314,7 +314,7 @@ services:
       - "${BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:80"
       - "${BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443"
     environment:
-      SERVER_NAME: "${PUBLIC_HOSTNAME:-memclaw.local}"
+      SERVER_NAME: "${PUBLIC_HOSTNAME:-caura.local}"
       AUTH_UPSTREAM: platform-auth-api:8020
       ADMIN_UPSTREAM: platform-admin-api:8001
       CORE_UPSTREAM: core-api:8000
