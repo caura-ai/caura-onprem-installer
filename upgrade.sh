@@ -2,8 +2,8 @@
 # Caura Enterprise — on-prem upgrade.
 #
 # Usage:
-#   curl -sL https://onprem.caura.ai/upgrade.sh | sudo bash
-#   curl -sL https://onprem.caura.ai/upgrade.sh | sudo bash -s -- --to v1.0.0-rc2
+#   curl -fsSL https://onprem.caura.ai/upgrade.sh | sudo bash
+#   curl -fsSL https://onprem.caura.ai/upgrade.sh | sudo bash -s -- --to v1.0.0-rc2
 #   sudo ./upgrade.sh --dry-run
 #   sudo ./upgrade.sh --to v1.0.0 --no-backup
 #
@@ -15,7 +15,8 @@
 #   4. DB snapshot to $MEMCLAW_HOME/backups/pre-upgrade-<from>-to-<to>-<ts>.pgbin
 #      (pg_dump -Fc). Skip with --no-backup.
 #   5. Record prev version to $MEMCLAW_HOME/.memclaw-prev-version so a later
-#      `rollback.sh` is a single command.
+#      rollback is a single CLI command: it reads that marker and re-enters
+#      this script with --to <prev>. There is no separate rollback script.
 #   6. Refresh bundle.tar.gz so compose / nginx / scripts stay aligned.
 #   7. Pull new images (compose pull --ignore-buildable).
 #   8. Rebuild gateway (local build).
@@ -54,15 +55,19 @@ set -euo pipefail
 # line-continued condition, and a `\` line cannot carry the trailing exemption
 # comment the ratchet needs on the line holding the old name.
 _reexec_guard="${CAURA_UPGRADE_REEXEC:-}${MEMCLAW_UPGRADE_REEXEC:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+# Resolved here rather than inside the branch because the success banner needs
+# it too: when neither the CLI nor an on-disk upgrade.sh is available to roll
+# back with, naming this URL is the only route left. One definition, so the
+# banner cannot name a different channel than the one this run came from.
+UPGRADE_URL="${MEMCLAW_UPGRADE_URL:-https://onprem.caura.ai/upgrade.sh}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+UPGRADE_URL="${CAURA_UPGRADE_URL:-$UPGRADE_URL}"
 if [ -z "$_reexec_guard" ] \
    && { [ "${BASH_SOURCE[0]:-$0}" = "bash" ] \
         || [ "${BASH_SOURCE[0]:-$0}" = "-bash" ] \
         || [ ! -r "${BASH_SOURCE[0]:-$0}" ]; }; then
-  _src="${MEMCLAW_UPGRADE_URL:-https://onprem.caura.ai/upgrade.sh}"
-  _src="${CAURA_UPGRADE_URL:-$_src}"
   _tmp=$(mktemp /tmp/caura-upgrade.XXXXXX.sh)
-  if ! curl -fsSL "$_src" -o "$_tmp"; then
-    echo "ERROR: failed to download $_src for local re-exec" >&2
+  if ! curl -fsSL "$UPGRADE_URL" -o "$_tmp"; then
+    echo "ERROR: failed to download $UPGRADE_URL for local re-exec" >&2
     exit 1
   fi
   chmod +x "$_tmp"
@@ -130,11 +135,12 @@ current_version() {
   # Empty → never installed / unknown.
   #
   # FIRST NON-EMPTY, not first present, and this is the site where that matters
-  # most: .env is hand-edited by operators (docs/upgrade.md tells them to sed it
-  # directly), so a file carrying a blank CAURA_VERSION= from a newer template
-  # beside the filled old-name key that is actually driving the stack is the
-  # ordinary half-migrated state. Reading the blank one makes upgrade.sh refuse
-  # a healthy install with "nothing to upgrade from".
+  # most: .env gets hand-edited by operators. docs/upgrade.md no longer tells
+  # them to sed it, but it did until recently, so the files already out there
+  # were edited that way. A file carrying a blank CAURA_VERSION= from a newer
+  # template beside the filled old-name key that is actually driving the stack
+  # is the ordinary half-migrated state. Reading the blank one makes upgrade.sh
+  # refuse a healthy install with "nothing to upgrade from".
   local v
   v=$(_env_key CAURA_VERSION)
   [ -n "$v" ] || v=$(_env_key MEMCLAW_VERSION)  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
@@ -446,6 +452,50 @@ if [ -n "$unhealthy" ] || [ "$stable_passes" -lt "$STABLE_PASSES_REQUIRED" ]; th
 fi
 
 # ── Success ────────────────────────────────────────────────────────────────
+# The rollback route the banner prints. The line the operator is handed has to
+# be one that runs on THIS host, because the banner this replaced named a
+# `scripts/rollback.sh` that has never existed in any repo or bundle, and the
+# whole point is to stop printing routes on faith.
+#
+# THE PRIMARY ROUTE IS ALWAYS upgrade.sh, and that is what makes it checkable.
+# A rollback is an upgrade toward the older tag, so this script is the thing
+# that has to run either way; the only question is whether it is already on
+# disk. `bash <path>` rather than executing it directly, because a copy fetched
+# with `curl -o` is mode 644 — readable, not executable — and that is how it
+# gets there at all: install.sh does not place it. Testing -x instead would
+# push that common case to the network for no reason; `bash` makes the readable
+# case usable.
+#
+# -fsSL on the fallback, matching the self-rescue download above. Without -f,
+# an error page from a broken endpoint is piped into `sudo bash` rather than
+# failing loudly, and this line is handed to an operator to paste.
+#
+# THE CLI IS OFFERED WITHOUT A DETECTION CHECK, deliberately, and this is a
+# correction: an earlier revision branched on whether the CLI was on PATH, and
+# that cannot be answered from here. This script runs as root — either because
+# operator used `sudo`, which is the documented form, or because it re-executed
+# itself via `sudo -E` — and sudoers' secure_path resets PATH regardless of
+# -E, so a per-user pipx/pip install is invisible to the check while being
+# perfectly present in the shell the operator returns to. Detection would have
+# under-reported it exactly where it is most likely to be installed. An
+# explicit "if it is installed" is honest and needs nothing to be true.
+#
+# The version is substituted in rather than left as <prev>, so the operator
+# does not have to go and read the marker file to use the line.
+#
+# `cauractl rollback` is not offered as an alternative spelling: both console
+# entries ship from one package today, so a host with the new name always has
+# the old one. Which name to teach is the command rename's decision.
+#
+# Both held in variables because a ratchet marker has to sit on the line
+# carrying the name, and inside the heredoc below that would print the marker
+# on the operator's screen.
+if [ -r "$MEMCLAW_HOME/upgrade.sh" ]; then  # legacy-name-ok: the install-root variable, named as its sibling scripts name it
+  ROLLBACK_HINT="sudo bash $MEMCLAW_HOME/upgrade.sh --to $FROM_VERSION"  # legacy-name-ok: the install-root variable, named as its sibling scripts name it
+else
+  ROLLBACK_HINT="curl -fsSL $UPGRADE_URL | sudo bash -s -- --to $FROM_VERSION"
+fi
+ROLLBACK_ALT="or 'memclawctl rollback', if the operator CLI is installed"  # legacy-name-floor: the shipped CLI's own command; an install whose CLI predates the alias has only this spelling
 cat <<EOF
 
 ──────────────────────────────────────────
@@ -454,7 +504,8 @@ cat <<EOF
   $FROM_VERSION → $TO_VERSION
   All services healthy.
   DB backup: ${BACKUP_PATH:-skipped}
-  Rollback: sudo $MEMCLAW_HOME/scripts/rollback.sh
+  Rollback: $ROLLBACK_HINT
+            $ROLLBACK_ALT
 ──────────────────────────────────────────
 
 EOF
