@@ -1,0 +1,50 @@
+name: Served-artifact check
+
+# The one gate here that looks OUTSIDE the repository.
+#
+# The ratchet, the sentinel and the engine-parity check all measure the
+# repository tree. Every one of them can be green — the gated legacy-name count
+# can reach zero — while onprem.caura.ai serves a copy of install.sh from last
+# month, because nothing was looking at the channel. On 2026-09-02 that was the
+# live state: 8 of the 23 artefacts served were behind this repo, install.sh by
+# three commits.
+#
+# SCHEDULED, AND DELIBERATELY NOT A PULL-REQUEST GATE. Between two publishes the
+# repository is SUPPOSED to be ahead of the channel — that is what an
+# unpublished commit is. Failing PRs for it would paint every PR red until the
+# next release and teach everyone to ignore the check. Daily, red means "the
+# channel has been behind for a day", which is worth reading.
+#
+# It needs no credential: a public bucket in front of a public repo. The
+# PUBLISHER needs GCS write access and therefore lives in a private repo
+# (caura-ai/caura-enterprise, the on-prem release workflow's publish-installer
+# job). Reading and publishing have different credential shapes, so they live in
+# different places, and that is why this half can be here.
+
+on:
+  schedule:
+    # 06:17 UTC. Off the hour on purpose — scheduled runs at :00 queue behind
+    # everyone else's cron on shared runners.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  served:
+    name: Channel vs origin/main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # fetch-depth: 0 is load-bearing, not caution. The check identifies WHICH
+      # commit's version of a file is being served by hashing blobs back through
+      # history, so a shallow clone cannot answer the question it exists to ask.
+      # The script verifies the ref resolves and says this if it does not.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compare the served channel against this repository
+        run: bash .github/scripts/check-served-artifacts.sh
