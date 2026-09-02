@@ -311,7 +311,7 @@ special-use or reserved name that cannot be used with email.
 
 The admin email uses a **reserved TLD** (`.local`, `.test`, `.example`,
 `.invalid`, or `localhost`). Email validation rejects these. Use a real,
-deliverable domain — `admin@yourcompany.com`, not `admin@memclaw.local`.
+deliverable domain — `admin@yourcompany.com`, not `admin@caura.local`.
 The VM's `--hostname` can still be anything (it's only the `server_name`);
 this constraint applies only to the admin email.
 

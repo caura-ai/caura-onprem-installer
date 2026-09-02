@@ -3,7 +3,7 @@
 # Run after install.sh completes. Exits non-zero on any failure.
 set -euo pipefail
 
-HOST="${PUBLIC_HOSTNAME:-memclaw.local}"
+HOST="${PUBLIC_HOSTNAME:-caura.local}"
 BASE="${BASE_URL:-https://$HOST}"
 ADMIN_JWT="${ADMIN_JWT:-}"
 

@@ -358,7 +358,7 @@ if [ "$NON_INTERACTIVE" = "true" ]; then
 fi
 
 # ── Resolve / generate secrets ──────────────────────────────────────────────
-HOSTNAME="${HOSTNAME:-memclaw.local}"
+HOSTNAME="${HOSTNAME:-caura.local}"
 
 JWT_SECRET=$(read_file "$JWT_SECRET_FILE" || true)
 [ -n "${JWT_SECRET:-}" ] || JWT_SECRET=$(random_hex 32)
@@ -570,7 +570,7 @@ EOF
   self-signed)
     if [ ! -f "$MEMCLAW_HOME/tls/cert.pem" ] || [ ! -f "$MEMCLAW_HOME/tls/key.pem" ]; then
       command -v openssl >/dev/null || die "--tls-self-signed requires openssl on the host" 1
-      cn="${TLS_DOMAIN:-${HOSTNAME:-memclaw.local}}"
+      cn="${TLS_DOMAIN:-${HOSTNAME:-caura.local}}"
       log "TLS: generating self-signed cert for CN=$cn (10 years, RSA-2048)"
       # SAN list covers the hostname plus localhost + the bind IP so
       # local probes / k8s liveness checks don't trip cert mismatches.
