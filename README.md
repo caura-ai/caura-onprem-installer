@@ -1,9 +1,15 @@
 # Caura Enterprise — On-Prem Deployment
 
 > To protect existing deployments, installed-machine
-> identifiers (`/etc/memclaw`, `memclaw-*` images, `MEMCLAW_*` vars, the  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
-> `memclaw` postgres role) are unchanged, permanently: existing installs  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
-> need nothing.
+> identifiers (`/etc/memclaw`, `MEMCLAW_*` vars, the `memclaw` postgres  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
+> role, the `memclaw-onprem/*` air-gap image tags) are unchanged,  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
+> permanently: existing installs need nothing.
+>
+> **Registry image names are the exception.** New versions publish under
+> `ghcr.io/caura-ai/caura-*`. GHCR has no rename, so the `memclaw-*`  <!-- legacy-name-floor: the retained GHCR packages a pinned install still resolves -->
+> packages are retained indefinitely rather than redirected — an install
+> that never upgrades keeps pulling the name in the compose file it
+> already holds. Detail in [`docs/env-aliases.md`](docs/env-aliases.md).
 
 Self-hosted Caura Enterprise as a Docker Compose stack. Runs on a
 single VM (connected or air-gapped) and is fully managed via a signed

@@ -116,6 +116,25 @@ Giving them a `CAURA_*` spelling here would name something no shipped image
 reads, so they are left alone until the application image moves. Do not "finish"
 them by hand — see `docs/troubleshooting.md`.
 
+## The registry image names do move
+
+The nine `ghcr.io/caura-ai/memclaw-*` images in `docker-compose.yml` and  <!-- legacy-name-floor: names the GHCR packages that are retained after the move -->
+`docker-compose.embedder.yml` are the one brand surface here that is **not**
+frozen. New versions publish under `ghcr.io/caura-ai/caura-*`. GHCR has no
+rename, so the old packages are retained indefinitely rather than redirected.
+
+Nothing is asked of an operator either way. A connected upgrade re-fetches the
+bundle and extracts it over the install (`upgrade.sh:291-292`), which replaces
+`docker-compose.yml` — so it picks up the new names by itself. An install that
+never upgrades keeps pulling the name already in its compose file, which is
+exactly why the old packages stay.
+
+**They are deliberately absent from the list below.** That list is names that
+*cannot* move; these can, and the distinction is the whole difference between
+a registry path and a customer's disk. The `memclaw-onprem/*` air-gap tags look  <!-- legacy-name-floor: distinguishes the frozen air-gap tags from the registry names -->
+like registry names and are not — they are inside tarballs customers already
+hold, so they belong to the list, not to this section.
+
 ## Names that are not aliases
 
 These carry the old brand because something outside this repo depends on the
