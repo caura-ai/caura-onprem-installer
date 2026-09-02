@@ -167,16 +167,15 @@ else
   ')
   bad_types=$(tar -tzvf "${work}/bundle.tar.gz" | awk '$1 !~ /^[-d]/ { print "not a file or directory: " $0 }')
 
-  # A member name containing a newline would make the two listings disagree on
-  # line count, which is the only way this pair can be desynchronised. Cheap to
-  # notice, and it means neither listing has to be trusted to be well-formed.
-  n_paths=$(tar -tzf "${work}/bundle.tar.gz" | wc -l | tr -d ' ')
-  n_types=$(tar -tzvf "${work}/bundle.tar.gz" | wc -l | tr -d ' ')
-  if [ "$n_paths" != "$n_types" ]; then
-    bad_types="${bad_types}
-member count disagrees between listings (${n_paths} vs ${n_types}) -- a name probably contains a newline"
-  fi
-
+  # A name containing a NEWLINE is deliberately not guarded here, because the
+  # guard that used to sit in this spot could not fire: both listings expand
+  # such a name across two lines identically, so their line counts agree and a
+  # count comparison sees nothing.
+  #
+  # It is handled where it actually lives instead — the loop below reads
+  # null-delimited names, so an embedded newline cannot split one member into
+  # two. Such a member then has no counterpart path in the repo and is reported
+  # as unaccounted, which is exactly what it is.
   bad_members=$(printf '%s\n%s' "$bad_paths" "$bad_types" | sed '/^$/d')
   if [ -n "$bad_members" ]; then
     report+=$(printf '\n  %-42s REFUSED %s member(s), archive not extracted:\n%s' \
@@ -189,10 +188,13 @@ member count disagrees between listings (${n_paths} vs ${n_types}) -- a name pro
     # group, which are meaningless here. Explicit rather than relying on tar
     # dropping them because the process is unprivileged.
     tar -xzf "${work}/bundle.tar.gz" -C "${work}/bundle" --no-same-owner
-    while IFS= read -r member; do
+    # Null-delimited: a member name may contain a newline, and a line-based
+    # read splits it into two names, neither of which exists. That crashed the
+    # comparison below with "shasum: .../bundle/a: No such file or directory".
+    while IFS= read -r -d '' member; do
       rel="${member#./}"
       _compare "bundle.tar.gz -> ${rel}" "${work}/bundle/${rel}" "$rel"
-    done < <(cd "${work}/bundle" && find . -type f | sort)
+    done < <(cd "${work}/bundle" && find . -type f -print0 | sort -z)
   fi
 fi
 
