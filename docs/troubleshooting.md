@@ -122,14 +122,27 @@ it in:
 
 ```bash
 sudo cp renewed-license.key /opt/memclaw/license/license.key
-docker compose exec platform-admin-api memclawctl license load \
-  /etc/memclaw/license.key
-docker compose exec platform-auth-api memclawctl license load \
-  /etc/memclaw/license.key
 ```
 
-The loader re-reads every hour automatically; the two `license load`
-calls just force an immediate pickup.
+That copy is the whole action. Both services re-verify on an hourly loop,
+so the new key takes effect within 60 minutes and nothing else is needed.
+`memclawctl license load <path>` from the host does the same copy and no  <!-- legacy-name-floor: the shipped CLI's own command -->
+more — despite the name, it does not reload anything.
+
+**To make it take effect now**, restart the two services that hold the
+license:
+
+```bash
+docker compose restart platform-admin-api platform-auth-api
+```
+
+Choose between those two paths deliberately, because they fail in
+opposite directions. The hourly loop is **fail-safe**: if the new file is
+missing or unreadable it keeps serving the cached license and starts
+polling every ~30s instead of flipping the org read-only. A restart is
+**fail-fast**: the license is read during startup and a service refuses
+to start on an invalid one. So if you are confident in the key, restart;
+if you are not, let the loop pick it up and stay up either way.
 
 **Clock-drift tolerance**: if the license is expired by ≤24h, the
 loader treats it as still valid (NTP sanity buffer). Past 24h it flips

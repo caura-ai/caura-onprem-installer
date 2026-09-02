@@ -76,12 +76,21 @@ API). Point your Prometheus at:
 
 ## Reloading the license without downtime
 
-Drop the new `license.key` into `./license/` and run:
+Drop the new `license.key` into `./license/`. That is the whole action —
+both services re-verify on an hourly loop, so the replacement is picked up
+within 60 minutes with no further step. `memclawctl license load <path>`  <!-- legacy-name-floor: the shipped CLI's own command -->
+from the host is a convenience wrapper around that same copy; despite the
+name it does not reload anything.
+
+To make it take effect now, restart the two services that hold the
+license:
 
 ```bash
-docker compose exec platform-admin-api memclawctl license load /etc/memclaw/license.key
-docker compose exec platform-auth-api  memclawctl license load /etc/memclaw/license.key
+docker compose restart platform-admin-api platform-auth-api
 ```
 
-Both services re-verify hourly anyway, so on-disk replacement is picked
-up within 60 minutes without the manual nudge.
+The two paths fail in opposite directions, so pick one deliberately. The
+hourly loop is fail-safe — an unreadable or missing file keeps the cached
+license and polls every ~30s rather than flipping the org read-only. A
+restart is fail-fast: the license is read during startup and a service
+refuses to start on an invalid one.

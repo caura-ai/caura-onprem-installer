@@ -133,9 +133,11 @@ new `.key` file to the VM and drop it in:
 
 ```bash
 sudo cp new-license.key /opt/memclaw/license/license.key
-# The loader re-reads hourly — or force an immediate pickup:
-docker compose exec platform-admin-api memclawctl license load \
-  /etc/memclaw/license.key
+# That is the whole action: both services re-verify hourly.
+# To take effect now instead, restart the two that hold the license —
+# but note a restart refuses to start on an invalid key, whereas the
+# hourly loop keeps serving the cached one.
+docker compose restart platform-admin-api platform-auth-api
 ```
 
 ## Upgrades
