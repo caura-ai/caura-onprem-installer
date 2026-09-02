@@ -103,12 +103,17 @@ curl -s -X POST http://memclaw.acme.com/api/memories \
 docker compose ps
 ```
 
-## Rollback
+## Rollback (connected)
 
-A rollback is an upgrade toward the older tag, so it goes through `upgrade.sh`
-either way: both spellings of the pinned version key move, a snapshot is taken,
-and the result is health-checked. The success banner prints the route your host
-can take, so after a live upgrade you can paste what it gave you.
+A rollback is an upgrade toward the older tag, so on a connected install it
+goes through `upgrade.sh` either way: both spellings of the pinned version key
+move, a snapshot is taken, and the result is health-checked. The success banner
+prints the route your host can take, so after a live upgrade you can paste what
+it gave you.
+
+**Air-gapped installs are different and have their own section below** —
+`upgrade.sh` fetches the bundle and pulls images, so it needs the network for
+any run, rollback included.
 
 **If `upgrade.sh` is on disk**, which it is on any host that has upgraded
 before:
@@ -120,6 +125,12 @@ sudo bash ./upgrade.sh --to v1.0.0
 
 `bash ./upgrade.sh` rather than `./upgrade.sh`: a copy fetched with `curl -o` is
 readable but not executable, and nothing in the install sets the bit.
+
+If you installed somewhere other than the path above, add
+`--memclaw-home /your/root`. The script resolves the install root from its  <!-- legacy-name-ok: the install-root flag, named as the script names it -->
+environment or that flag and never from the working directory, so the `cd`
+above does not tell it where to look — and the banner printed at the end of an
+upgrade already includes the flag with your root filled in.
 
 **Otherwise fetch it.** This needs nothing installed and is what the banner
 falls back to:
@@ -142,12 +153,48 @@ where a per-user install is not.
 The banner does not try to detect the CLI, for that same reason: it prints while
 running as root, where a per-user install is invisible.
 
-Do not edit the version in `.env` with a `sed`, which older revisions of this
-page suggested. The key has two spellings and an `.env` written before the
-rename carries only one of them, so a `sed` anchored on the other matches
-nothing, exits 0, prints nothing — and `up -d` then re-resolves to the tag
-already running, health checks pass because nothing changed, and the rollback
-reports success without having happened.
+On a connected install, do not edit the version in `.env` by hand instead —
+which older revisions of this page suggested. Going through `upgrade.sh` moves
+both spellings of the key, snapshots first and health-checks after; a hand edit
+does none of that and can fail silently, as the next section explains.
+
+## Rollback (air-gapped)
+
+`upgrade.sh` is not usable here, for the same reason it is not in the air-gap
+*upgrade* flow above: it refreshes the bundle over the network and runs
+`docker compose pull`, and it exits rather than continuing when either fails.
+So an offline rollback is the manual route, and it is the mirror image of the
+air-gap upgrade.
+
+**It only works if the old images are still loaded.** `docker image prune`
+after a successful upgrade is what removes them, so if that has already run,
+load the previous release tarball first with `./airgap-load.sh`.
+
+From the install root:
+
+**1. Find out which spelling of the version key your `.env` actually carries**
+— run `grep -nE '^(CAURA|MEMCLAW)_VERSION=' .env`. Do not skip this and reach  <!-- legacy-name-ok: names both spellings of the version key, which is the whole point of the command -->
+for a `sed`: a pattern anchored on the spelling the file does *not* have
+matches nothing, exits 0 and prints nothing. `up -d` then re-resolves to the
+tag already running, every health check passes because nothing changed, and the
+rollback reports success without having happened.
+
+**2. Set every line that printed to the old tag.** If both are present they
+must agree — the newer spelling is read first, so a half-edited pair resolves
+to the stale one.
+
+**3. Roll**, with the overlay that resolves images locally, then **4. verify**
+rather than assume:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.airgap.yml up -d
+docker compose ps
+curl -sf http://<your-host>/api/version | jq .version
+```
+
+Step 4 is not ceremony. The failure mode this procedure has, and that
+`upgrade.sh` exists to remove on connected hosts, is reporting success while
+running the version you were trying to leave.
 
 **Caveat**: Alembic doesn't auto-downgrade. If the new version shipped a
 destructive migration, rollback requires restoring from the backup you

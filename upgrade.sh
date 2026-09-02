@@ -490,10 +490,19 @@ fi
 # Both held in variables because a ratchet marker has to sit on the line
 # carrying the name, and inside the heredoc below that would print the marker
 # on the operator's screen.
+# The install-root flag is passed EXPLICITLY below, and it is not decoration.
+# The variable holding that root resolves from two env-var spellings or from the
+# flag, and it is a plain shell variable that is never exported -- so `sudo`
+# carries none of them to the child. Without the flag on the printed line, the
+# pasted command re-derives the built-in default and rolls back THE WRONG
+# DIRECTORY on any install that used a custom root, quietly, because the default
+# directory usually exists too. The path is single-quoted in the printed string
+# so a root containing a space survives being pasted rather than splitting into
+# a shorter valid path.
 if [ -r "$MEMCLAW_HOME/upgrade.sh" ]; then  # legacy-name-ok: the install-root variable, named as its sibling scripts name it
-  ROLLBACK_HINT="sudo bash $MEMCLAW_HOME/upgrade.sh --to $FROM_VERSION"  # legacy-name-ok: the install-root variable, named as its sibling scripts name it
+  ROLLBACK_HINT="sudo bash '$MEMCLAW_HOME/upgrade.sh' --to $FROM_VERSION --memclaw-home '$MEMCLAW_HOME'"  # legacy-name-ok: the install-root flag and variable, named as this script names them
 else
-  ROLLBACK_HINT="curl -fsSL $UPGRADE_URL | sudo bash -s -- --to $FROM_VERSION"
+  ROLLBACK_HINT="curl -fsSL $UPGRADE_URL | sudo bash -s -- --to $FROM_VERSION --memclaw-home '$MEMCLAW_HOME'"  # legacy-name-ok: the install-root flag and variable, named as this script names them
 fi
 ROLLBACK_ALT="or 'memclawctl rollback', if the operator CLI is installed"  # legacy-name-floor: the shipped CLI's own command; an install whose CLI predates the alias has only this spelling
 cat <<EOF
