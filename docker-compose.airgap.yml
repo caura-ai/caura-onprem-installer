@@ -22,6 +22,17 @@ services:
     image: "memclaw-onprem/core-api:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   app-frontend:
     image: "memclaw-onprem/app:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  # MISSING UNTIL NOW, and it is the one service this overlay has to swap that
+  # it did not. Every other service in docker-compose.yml is either replaced
+  # above or is an upstream base -- postgres, rabbitmq, redis -- which the
+  # tarball loads under its own name, so compose finds it with no override.
+  # core-operations is neither: its image is a ghcr.io reference, and an
+  # air-gapped host has no registry to reach. So the scheduler has been the one
+  # service that cannot start on exactly the installs least able to diagnose
+  # it, since it was added in 33a984b. Same OPS chain as docker-compose.yml, so
+  # CAURA_OPS_VERSION selects the same version offline as it does online.
+  core-operations:
+    image: "memclaw-onprem/core-operations:${CAURA_OPS_VERSION:-${MEMCLAW_OPS_VERSION:-${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   # gateway image is built locally (see docker-compose.yml); override is a no-op
   gateway:
     image: "memclaw-onprem/gateway:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
