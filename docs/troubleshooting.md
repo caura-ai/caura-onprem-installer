@@ -74,7 +74,7 @@ Common reasons a platform service won't start:
   ```bash
   python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
   ```
-- License file missing at `/etc/memclaw/license.key` — `platform-auth-api`
+- License file missing at `/etc/caura/license.key` — `platform-auth-api`
   + `platform-admin-api` refuse to start when `LICENSE_FILE` is set but
   the file doesn't exist.
 
@@ -91,7 +91,7 @@ docker compose restart gateway
 
 ```
 common.license.verifier.LicenseMissingError:
-License file not found at /etc/memclaw/license.key.
+License file not found at /etc/caura/license.key.
 ```
 
 **Root cause**: the license volume mount is empty or the file has the

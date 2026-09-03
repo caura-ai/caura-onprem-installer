@@ -83,7 +83,7 @@ services:
       PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
       JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env (32+ chars)}"
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      LICENSE_FILE: /etc/memclaw/license.key
+      LICENSE_FILE: /etc/caura/license.key
       EMAIL_PROVIDER: "${EMAIL_PROVIDER:-log}"
       EMAIL_API_KEY: "${EMAIL_API_KEY:-}"
       EMAIL_FROM: "${EMAIL_FROM:-noreply@${PUBLIC_HOSTNAME:-caura.local}}"
@@ -105,7 +105,7 @@ services:
       # rw so the first-run /api/setup/license endpoint can write the uploaded
       # license into this volume. After setup the whole /setup/* surface returns
       # 404 so no untrusted code can overwrite the file.
-      - ./license:/etc/memclaw
+      - ./license:/etc/caura
       - ./logs/platform-auth-api:/var/log/memclaw/platform-auth-api
     depends_on:
       platform-storage-api:
@@ -128,7 +128,7 @@ services:
       JWT_SECRET: "${JWT_SECRET}"
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      LICENSE_FILE: /etc/memclaw/license.key
+      LICENSE_FILE: /etc/caura/license.key
       SERVICE_VERSION: "${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
       BILLING_ENABLED: "false"
       SETTINGS_ENCRYPTION_KEY: "${SETTINGS_ENCRYPTION_KEY:?install.sh generates this}"
@@ -145,7 +145,7 @@ services:
       # rw so the first-run /api/setup/license endpoint can write the uploaded
       # license into this volume. After setup the whole /setup/* surface returns
       # 404 so no untrusted code can overwrite the file.
-      - ./license:/etc/memclaw
+      - ./license:/etc/caura
       - ./logs/platform-admin-api:/var/log/memclaw/platform-admin-api
     depends_on:
       platform-storage-api:

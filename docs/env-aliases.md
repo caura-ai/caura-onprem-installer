@@ -140,7 +140,7 @@ hold, so they belong to the list, not to this section.
 These carry the old brand because something outside this repo depends on the
 exact characters, and they are not settings you can re-spell:
 
-- `/opt/memclaw`, `/var/log/memclaw/`, `/etc/memclaw/` — paths on customer disks.  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
+- `/opt/memclaw` and `/var/log/memclaw/` — paths on customer disks.  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
 - The `POSTGRES_DB` / `POSTGRES_USER` defaults — the database an existing install
   already owns its data under.
 - The `memclaw-onprem/*` air-gap image names — already inside tarballs customers hold.  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->

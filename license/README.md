@@ -2,7 +2,7 @@
 
 Drop your Caura-issued `license.key` here (the file is gitignored).
 The docker-compose stack mounts this directory read-only into
-`platform-admin-api` and `platform-auth-api` at `/etc/memclaw/`.
+`platform-admin-api` and `platform-auth-api` at `/etc/caura/`.
 
 If the file is missing at startup the services will refuse to boot with
 a clear error. Use the web wizard at `/setup` or `cauractl license load`

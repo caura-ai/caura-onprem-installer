@@ -311,13 +311,13 @@ SENTINELS: tuple[Sentinel, ...] = (
     ),
     Sentinel(
         path="docker-compose.yml",
-        text="LICENSE_FILE: /etc/memclaw/license.key",  # legacy-name-floor: floor
+        text="LICENSE_FILE: /etc/caura/license.key",
         kind=LITERAL,
         breaks="images built in other repos look for a licence at a path nothing mounts",
     ),
     Sentinel(
         path="docker-compose.yml",
-        text="- ./license:/etc/memclaw",  # legacy-name-floor: floor
+        text="- ./license:/etc/caura",
         kind=LITERAL,
         breaks="the licence bind mount stops landing where the platform images read it",
     ),

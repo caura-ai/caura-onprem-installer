@@ -1,7 +1,7 @@
 # Caura Enterprise — On-Prem Deployment
 
 > To protect existing deployments, installed-machine
-> identifiers (`/etc/memclaw`, `MEMCLAW_*` vars, the `memclaw` postgres  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
+> identifiers (`/opt/memclaw`, `MEMCLAW_*` vars, the `memclaw` postgres  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
 > role, the `memclaw-onprem/*` air-gap image tags) are unchanged,  <!-- legacy-name-floor: lists the frozen installed-machine identifiers -->
 > permanently: existing installs need nothing.
 >
