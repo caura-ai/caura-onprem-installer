@@ -209,6 +209,8 @@ services:
       ALLOYDB_DATABASE: "${POSTGRES_DB:-memclaw}"
       ALLOYDB_REQUIRE_SSL: "${POSTGRES_REQUIRE_SSL:-false}"
       ENVIRONMENT: production
+      # Storage-auth perimeter — must equal core-api's CORE_STORAGE_SHARED_SECRET.
+      CORE_STORAGE_SHARED_SECRET: "${CORE_STORAGE_SHARED_SECRET:?install.sh or upgrade.sh generates this}"
       LOG_FORMAT_JSON: "true"
       LOG_FILE: /var/log/memclaw/core-storage-api/core-storage-api.log
     volumes:
@@ -232,6 +234,10 @@ services:
     environment:
       ENVIRONMENT: production
       CORE_STORAGE_API_URL: http://core-storage-api:8002
+      # Perimeter for the core-api -> core-storage-api hop (storage-auth). core-api
+      # signs its storage calls with this; core-storage-api compares it. core-api
+      # refuses to start without it from backend-2.46.0. Same value on both services.
+      CORE_STORAGE_SHARED_SECRET: "${CORE_STORAGE_SHARED_SECRET:?install.sh or upgrade.sh generates this}"
       ALLOYDB_HOST: "${POSTGRES_HOST:-postgres}"
       ALLOYDB_PORT: "${POSTGRES_PORT:-5432}"
       ALLOYDB_USER: "${POSTGRES_USER:-memclaw}"
