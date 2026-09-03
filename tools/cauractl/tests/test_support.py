@@ -16,8 +16,8 @@ _SRC = _HERE.parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from memclawctl.cli import cli  # noqa: E402
-from memclawctl.support import (  # noqa: E402
+from cauractl.cli import cli  # noqa: E402
+from cauractl.support import (  # noqa: E402
     _cap_size,
     _redact,
     build_bundle,
@@ -350,7 +350,7 @@ def test_review_rejects_non_bundle(tmp_path: Path):
 
 
 def test_scan_for_leaks_flags_jwt_shape():
-    tmp = Path("/tmp") / "memclawctl-leak-test.tar.gz"
+    tmp = Path("/tmp") / "cauractl-leak-test.tar.gz"
     try:
         with tarfile.open(tmp, "w:gz") as tar:
             bad = b"token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhYmMifQ.sig123abcdef\n"
@@ -529,3 +529,58 @@ def test_upload_requires_license_file(tmp_path: Path):
     )
     assert result.exit_code != 0
     assert "license file not found" in result.output
+
+
+# ── the CLI's own version, across the distribution rename ──────────────────
+
+
+def test_self_version_prefers_the_new_distribution(monkeypatch):
+    """``cauractl`` first, so a reinstalled host reports its real version.
+
+    THE ONE OF THESE THREE THAT DISCRIMINATES. Both distributions resolve, and
+    only a lookup that asks for the new name first returns the new version; the
+    two below pass on the pre-rename single-name lookup as well and are guards
+    against a future rewrite rather than evidence the pair is read.
+    """
+    import cauractl.support as support
+
+    def fake_version(dist):
+        return {"cauractl": "9.9.9", "caura-memclawctl": "0.0.1"}[dist]  # legacy-name-ok: the previous distribution name, still installed until a host reinstalls
+
+    monkeypatch.setattr("importlib.metadata.version", fake_version)
+    assert support._self_version() == "9.9.9"
+
+
+def test_self_version_falls_back_to_the_old_distribution(monkeypatch):
+    """The case the fallback exists for: a host that has not reinstalled.
+
+    The rename does not reach an already-installed CLI, and this value goes
+    into the support bundle manifest beside ``collector``. Reading only the new
+    name would report "unknown" to the support backend for every such host --
+    a regression in a field someone reads, caused by a rename that was
+    otherwise invisible to them.
+    """
+    from importlib.metadata import PackageNotFoundError
+
+    import cauractl.support as support
+
+    def fake_version(dist):
+        if dist == "cauractl":
+            raise PackageNotFoundError(dist)
+        return "0.0.1"
+
+    monkeypatch.setattr("importlib.metadata.version", fake_version)
+    assert support._self_version() == "0.0.1"
+
+
+def test_self_version_is_unknown_when_neither_is_installed(monkeypatch):
+    """Running from a source checkout. Must not raise into bundle collection."""
+    from importlib.metadata import PackageNotFoundError
+
+    import cauractl.support as support
+
+    def fake_version(dist):
+        raise PackageNotFoundError(dist)
+
+    monkeypatch.setattr("importlib.metadata.version", fake_version)
+    assert support._self_version() == "unknown"

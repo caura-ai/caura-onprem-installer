@@ -54,7 +54,7 @@ ships no outbound dependencies except the optional phone-home
 - **Users** — Argon2id password hashes, optional GitHub OAuth, optional
   TOTP 2FA.
 - **Agents / API clients** — SHA-256-hashed API keys (prefix `mc_`), 
-  scope is a single tenant. Rotated via `memclawctl issue-api-key`.
+  scope is a single tenant. Rotated via `cauractl issue-api-key`.
 - **License-driven read-only**: when the license is expired or the org
   is explicitly marked read-only, the gateway's `auth_request` surfaces
   an `X-Org-Read-Only: true` header that `enforce_usage_limits()` in
@@ -109,7 +109,7 @@ When enabled:
 | License forgery | RS256 signature (private key is in CauraOps GCP Secret Manager, never leaves that boundary) |
 | License tampering | Loader refuses to load on any signature mismatch, service doesn't start |
 | License replay past expiry | Expiry enforced with 24h clock-drift tolerance; after that, writes return 403 |
-| Stolen API key | Keys are scoped per-tenant; rotation via `memclawctl issue-api-key`; revoke via admin-api |
+| Stolen API key | Keys are scoped per-tenant; rotation via `cauractl issue-api-key`; revoke via admin-api |
 | Token exfiltration via logs | JWTs + API keys are masked in structured logs (prefix-only) |
 | Phone-home replay / spoof | HMAC-SHA256 over raw body with a key unique per-license; constant-time verify on CauraOps side |
 | Malicious plugin source | `install-plugin` / `plugin-source` serve files from the committed `plugin/` tree — verify the `plugin-source-hash` matches on the client if you want an integrity gate |

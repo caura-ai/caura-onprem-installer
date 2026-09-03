@@ -89,5 +89,5 @@ spellings is [`docs/env-aliases.md`](docs/env-aliases.md).
 
 - Issue tracker: contact your Caura representative.
 - Status dashboard: `https://ops.caura.ai` (Caura-operated).
-- Support bundles: `memclawctl support bundle` produces a redacted
+- Support bundles: `cauractl support bundle` produces a redacted
   tarball you can email or upload. See [`docs/logging.md`](docs/logging.md).

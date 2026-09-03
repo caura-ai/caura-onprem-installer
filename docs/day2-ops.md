@@ -48,7 +48,7 @@ docker compose logs -f
 grep -r "core_api_request_failed" /opt/memclaw/logs/
 
 # Collect a redacted support bundle for Caura
-memclawctl support bundle --notes "recall 503 under load"
+cauractl support bundle --notes "recall 503 under load"
 ```
 
 ## Health + license endpoints
@@ -78,7 +78,7 @@ API). Point your Prometheus at:
 
 Drop the new `license.key` into `./license/`. That is the whole action —
 both services re-verify on an hourly loop, so the replacement is picked up
-within 60 minutes with no further step. `memclawctl license load <path>`  <!-- legacy-name-floor: the shipped CLI's own command -->
+within 60 minutes with no further step. `cauractl license load <path>`
 from the host is a convenience wrapper around that same copy; despite the
 name it does not reload anything.
 

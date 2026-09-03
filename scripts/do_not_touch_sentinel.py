@@ -244,13 +244,13 @@ SENTINELS: tuple[Sentinel, ...] = (
         breaks="a version bump edits an .env in an empty directory and reports success",
     ),
     Sentinel(
-        path="tools/memclawctl/src/memclawctl/cli.py",  # legacy-name-floor: the pinned file's path
+        path="tools/cauractl/src/cauractl/cli.py",
         text='os.environ.get("MEMCLAW_HOME", "/opt/memclaw")',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the operator CLI's backup, restore, upgrade and rollback use the wrong root",
     ),
     Sentinel(
-        path="tools/memclawctl/src/memclawctl/support.py",  # legacy-name-floor: the pinned file's path
+        path="tools/cauractl/src/cauractl/support.py",
         text='os.environ.get("MEMCLAW_HOME", "/opt/memclaw")',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="a support bundle is collected from the wrong install root, or comes back empty",
@@ -283,20 +283,29 @@ SENTINELS: tuple[Sentinel, ...] = (
     ),
     # -- Cross-repo data contracts. Nothing in THIS repo fails when they go. ---
     Sentinel(
-        path="tools/memclawctl/src/memclawctl/support.py",  # legacy-name-floor: the pinned file's path
+        path="tools/cauractl/src/cauractl/support.py",
         text='"collector": "memclawctl"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the support backend stops recognising every bundle already in flight",
     ),
     Sentinel(
-        path="tools/memclawctl/src/memclawctl/support.py",  # legacy-name-floor: the pinned file's path
-        text='version("caura-memclawctl")',  # legacy-name-floor: floor
+        path="tools/cauractl/src/cauractl/support.py",
+        text='for dist in ("cauractl", "caura-memclawctl"):',  # legacy-name-ok: the previous distribution name, read as a fallback
         kind=LITERAL,
         breaks="bundle building raises PackageNotFoundError if the distribution is renamed alone",
     ),
+    # -- A persisted value, found while renaming the CLI around it. Nothing ---
+    # -- in this repo fails when it changes; the damage is in customer --------
+    # -- databases, which is exactly the coupling this list exists to hold. ---
     Sentinel(
-        path="tools/memclawctl/pyproject.toml",  # legacy-name-floor: the pinned file's path
-        text='name = "caura-memclawctl"',  # legacy-name-floor: floor
+        path="tools/cauractl/src/cauractl/cli.py",
+        text='default="memclawctl-import",',  # legacy-name-ok: a persisted agent_id already written into customer rows, which rule 3 keeps working
+        kind=LITERAL,
+        breaks="the agent_id `memory import` stamps on every row it writes, stored server-side; renaming it splits 'memories this tool imported' across two ids with the existing rows unreachable by the new one, and no query here or in caura-ops would fail to say so",
+    ),
+    Sentinel(
+        path="tools/cauractl/pyproject.toml",
+        text='name = "cauractl"',
         kind=LITERAL,
         breaks="the distribution name and the runtime version() lookup stop agreeing",
     ),

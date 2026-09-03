@@ -66,8 +66,8 @@ SCANNED = (
     "docker-compose.embedder.yml",
     "docker-compose.embedder.airgap.yml",
     "docker-compose.tls-letsencrypt.yml",
-    "tools/memclawctl/src/memclawctl/cli.py",  # legacy-name-floor: the shipped CLI's path
-    "tools/memclawctl/src/memclawctl/support.py",  # legacy-name-floor: the shipped CLI's path
+    "tools/cauractl/src/cauractl/cli.py",
+    "tools/cauractl/src/cauractl/support.py",
 )
 
 # Old-brand names this repo WRITES but never reads, so there is nothing here to
@@ -717,10 +717,10 @@ def _import_cli_defaults(env: dict[str, str]) -> dict[str, str]:
     and a reload inside this process would leave a half-initialised module
     behind for every later test.
     """
-    src = REPO_ROOT / "tools" / "memclawctl" / "src"  # legacy-name-floor: the shipped CLI's path
+    src = REPO_ROOT / "tools" / "cauractl" / "src"
     code = (
         "import json\n"
-        "from memclawctl import cli, support\n"  # legacy-name-floor: the shipped CLI's path
+        "from cauractl import cli, support\n"
         "print(json.dumps({'url': cli.DEFAULT_URL, 'admin_key': cli.DEFAULT_ADMIN_KEY,"
         " 'home': str(cli.DEFAULT_HOME), 'support_home': str(support.DEFAULT_HOME),"
         " 'endpoint': support.DEFAULT_SUPPORT_ENDPOINT}))"
@@ -847,10 +847,10 @@ def test_the_api_key_option_actually_uses_a_list():
     putting it on sys.path here would leak into the two gate test files that
     share this runner.
     """
-    src = REPO_ROOT / "tools" / "memclawctl" / "src"  # legacy-name-floor: the shipped CLI's path
+    src = REPO_ROOT / "tools" / "cauractl" / "src"
     code = (
         "import json\n"
-        "from memclawctl import cli\n"  # legacy-name-floor: the shipped CLI's path
+        "from cauractl import cli\n"
         "out = {}\n"
         "for name, cmd in cli.memory_group.commands.items():\n"
         "    for p in cmd.params:\n"

@@ -81,14 +81,14 @@ so every bundle contains the full retention history).
 
 ## Support bundles
 
-`memclawctl support bundle` produces a redacted tarball for Caura
+`cauractl support bundle` produces a redacted tarball for Caura
 support triage:
 
 ```
-$ memclawctl support bundle
+$ cauractl support bundle
 Collecting from /opt/memclaw → /tmp
 Bundle ready: /tmp/memclaw-support-host-20260422T114502Z.tar.gz  (14.3 MiB)
-Secrets redacted. Review with: memclawctl support review …
+Secrets redacted. Review with: cauractl support review …
 ```
 
 ### What's inside
@@ -122,13 +122,13 @@ Runs in-memory, per file, before it hits the tarball. Patterns cover:
 - `.env` shell lines for the same names.
 - Generic stragglers: `Bearer <token>`, `sk-…`, `mc_admin_…`, 3-part JWTs.
 
-`memclawctl support review <bundle>` runs a second-pass shape scanner
+`cauractl support review <bundle>` runs a second-pass shape scanner
 on the already-redacted bytes and exits non-zero if anything slips
 through. Chain it in your delivery process:
 
 ```
-memclawctl support bundle --out-dir /tmp --notes "recall 503 under load"
-memclawctl support review /tmp/memclaw-support-*.tar.gz
+cauractl support bundle --out-dir /tmp --notes "recall 503 under load"
+cauractl support review /tmp/*-support-*.tar.gz
 ```
 
 Oversized files (> 50 MiB after redaction) are trimmed to head + tail
@@ -137,7 +137,7 @@ goal is an emailable bundle.
 
 ### Delivery — air-gapped
 
-`memclawctl support bundle` writes a tarball to `/tmp`. Copy it off
+`cauractl support bundle` writes a tarball to `/tmp`. Copy it off
 the host via whatever your operations allows (USB, SFTP jumpbox,
 signed transfer) and email it to support@caura.ai. No network access
 from the on-prem host is needed.
@@ -145,7 +145,7 @@ from the on-prem host is needed.
 ### Delivery — connected
 
 ```
-memclawctl support upload /tmp/memclaw-support-*.tar.gz
+cauractl support upload /tmp/*-support-*.tar.gz
 ```
 
 HMAC-SHA256 signed with a key derived from `(license_id, issued_at)`

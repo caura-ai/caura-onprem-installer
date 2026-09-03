@@ -126,7 +126,7 @@ sudo cp renewed-license.key /opt/memclaw/license/license.key
 
 That copy is the whole action. Both services re-verify on an hourly loop,
 so the new key takes effect within 60 minutes and nothing else is needed.
-`memclawctl license load <path>` from the host does the same copy and no  <!-- legacy-name-floor: the shipped CLI's own command -->
+`cauractl license load <path>` from the host does the same copy and no
 more — despite the name, it does not reload anything.
 
 **To make it take effect now**, restart the two services that hold the
@@ -295,7 +295,7 @@ See [`logging.md`](logging.md) for the full log layout.
 ## Support bundle: "Leak-scan: FAILED"
 
 ```
-memclawctl support review /tmp/memclaw-support-*.tar.gz
+cauractl support review /tmp/*-support-*.tar.gz
 # → logs/core-api/... → openai_key: sk-proj-AAAAAAAAAAAAAAAA
 ```
 
@@ -305,7 +305,7 @@ recognise (e.g. a dict repr with unusual quoting).
 
 **Fix**:
 
-1. Upgrade `memclawctl` to the latest release and re-bundle —
+1. Upgrade `cauractl` to the latest release and re-bundle —
    redactor patterns get tightened over time.
 2. If the bundle is genuinely clean after manual review of the flagged
    lines (many `high_entropy_secret` hits are false positives against
@@ -351,13 +351,13 @@ search 503s. The stack has no reachable embedding backend:
 
 - `docker compose logs --timestamps --tail 200 <service>` for ANY
   service issue.
-- `memclawctl status` for a quick license + setup snapshot.
-- `memclawctl support bundle` to snapshot logs + compose state into a
+- `cauractl status` for a quick license + setup snapshot.
+- `cauractl support bundle` to snapshot logs + compose state into a
   redacted tarball. Attach to a support email, or upload directly:
-  `memclawctl support upload /tmp/memclaw-support-*.tar.gz`. See
+  `cauractl support upload /tmp/*-support-*.tar.gz`. See
   [`logging.md`](logging.md) for what's included and the redaction
   guarantees.
 - Contact: your Caura rep or `support@caura.ai`. Include:
-  - `memclawctl license status` output
+  - `cauractl license status` output
   - `docker compose ps` output
   - A support bundle (preferred over raw logs — pre-redacted)

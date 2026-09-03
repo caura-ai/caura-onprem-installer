@@ -1,5 +1,5 @@
 [project]
-name = "caura-memclawctl"
+name = "cauractl"
 version = "0.1.0"
 description = "Day-2 operations CLI for on-prem Caura deployments"
 readme = "README.md"
@@ -13,8 +13,11 @@ dependencies = [
 ]
 
 [project.scripts]
-memclawctl = "memclawctl.cli:cli"
-cauractl = "memclawctl.cli:cli"  # legacy-name-floor: frozen module path
+# Both names, one implementation. ``cauractl`` is the name from here on; the
+# older one stays because it is on operators' disks and in runbooks, and rule 3
+# keeps it working -- it is an alias to keep, not a spelling to migrate off.
+cauractl = "cauractl.cli:cli"
+memclawctl = "cauractl.cli:cli"  # legacy-name-ok: permanent console-script alias, which rule 3 keeps working
 
 [build-system]
 requires = ["setuptools>=75.0"]
