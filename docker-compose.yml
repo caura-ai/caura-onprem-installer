@@ -195,6 +195,26 @@ services:
     depends_on:
       core-api:
         condition: service_started
+    # /readyz, NOT /healthz. Both exist; only one is worth probing. /healthz
+    # returns a static {"status": "ok"} and would go on saying so with every
+    # tick loop dead -- it answers "is uvicorn up", which State=running already
+    # told us. /readyz raises 503 when scheduler.is_healthy is false, and that
+    # property asserts every registered task still holds a live runtime slot
+    # and none has finished. On a service with no request traffic to fail,
+    # that is the difference between "the process exists" and "the crons are
+    # actually running".
+    #
+    # python rather than curl: the image is python:3.12-slim and has none.
+    # Port 8080 is the image's EXPOSE and its uvicorn default, and compose sets
+    # no PORT, so it cannot drift. urlopen raises on 503, which is the failure.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/readyz', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      # The scheduler registers ten jobs before serving; without this the first
+      # probes race startup and upgrade.sh would see Health=starting.
+      start_period: 30s
     logging: *default-logging
 
   core-storage-api:
