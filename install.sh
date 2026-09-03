@@ -387,6 +387,12 @@ fi
 GATEWAY_SHARED_SECRET="${GATEWAY_SHARED_SECRET:-}"
 [ -n "${GATEWAY_SHARED_SECRET:-}" ] || GATEWAY_SHARED_SECRET=$(random_hex 32)
 
+# Storage-auth perimeter for the core-api -> core-storage-api hop. Required from
+# backend-2.46.0 — core-api will not start without it; core-storage-api compares
+# the same value. 64 hex chars; generate one if the caller did not supply it.
+CORE_STORAGE_SHARED_SECRET="${CORE_STORAGE_SHARED_SECRET:-}"
+[ -n "${CORE_STORAGE_SHARED_SECRET:-}" ] || CORE_STORAGE_SHARED_SECRET=$(random_hex 32)
+
 OPENAI_API_KEY=$(read_file "$OPENAI_API_KEY_FILE" || true)
 
 # Auto-flip the default EMBEDDING_PROVIDER=local to "openai" when the
@@ -697,6 +703,7 @@ POSTGRES_DB=${POSTGRES_DB}
 POSTGRES_REQUIRE_SSL=${POSTGRES_REQUIRE_SSL}
 SETTINGS_ENCRYPTION_KEY=${SETTINGS_ENCRYPTION_KEY}
 GATEWAY_SHARED_SECRET=${GATEWAY_SHARED_SECRET}
+CORE_STORAGE_SHARED_SECRET=${CORE_STORAGE_SHARED_SECRET}
 EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
 OPENAI_API_KEY=${OPENAI_API_KEY}
 EMAIL_PROVIDER=${EMAIL_PROVIDER}

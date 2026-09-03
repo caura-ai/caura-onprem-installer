@@ -379,6 +379,19 @@ if [ -z "$(_env_key GATEWAY_SHARED_SECRET)" ]; then
   log "Generated GATEWAY_SHARED_SECRET (required by core-api from backend-2.28.0)."
 fi
 
+# CORE_STORAGE_SHARED_SECRET (from backend-2.46.0): core-api refuses to start
+# without a perimeter for the core-api -> core-storage-api hop; core-storage-api
+# compares the same value. Same backfill rationale as GATEWAY_SHARED_SECRET above
+# — keyed on the empty VALUE, generated before any compose invocation.
+if [ -z "$(_env_key CORE_STORAGE_SHARED_SECRET)" ]; then
+  _cs_secret=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+  if ! _rewrite_env_key CORE_STORAGE_SHARED_SECRET "$_cs_secret"; then
+    echo "CORE_STORAGE_SHARED_SECRET=${_cs_secret}" >> .env
+  fi
+  unset _cs_secret
+  log "Generated CORE_STORAGE_SHARED_SECRET (required by core-api from backend-2.46.0)."
+fi
+
 # ── Pull + build + up ───────────────────────────────────────────────────────
 log "Pulling images at :${TO_VERSION}"
 if ! docker compose "${COMPOSE_FILES[@]}" pull --ignore-buildable 2>/dev/null; then
