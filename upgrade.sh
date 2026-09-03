@@ -100,6 +100,7 @@ SERVICES=(
   platform-audit-api
   core-storage-api
   core-api
+  core-operations
   gateway
 )
 
