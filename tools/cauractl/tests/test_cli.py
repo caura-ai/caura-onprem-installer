@@ -1,7 +1,8 @@
-"""Smoke tests for the memclawctl CLI entrypoint."""
+"""Smoke tests for the cauractl CLI entrypoint."""
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -9,22 +10,25 @@ import httpx
 import pytest
 from click.testing import CliRunner
 
-# Make src/ importable when running `pytest` from the tools/memclawctl dir
+# Make src/ importable when running `pytest` from the tools/cauractl dir
 # OR from the repo root.
 _HERE = Path(__file__).resolve().parent
 _SRC = _HERE.parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from memclawctl.cli import cli  # noqa: E402
+from cauractl.cli import cli  # noqa: E402
 
 
 def test_console_scripts_share_the_click_group():
     pyproject = (_HERE.parent / "pyproject.toml").read_text()
     scripts = pyproject.partition("[project.scripts]")[2].partition("\n[")[0]
-    entrypoint = '"memclawctl.cli:cli"'  # legacy-name-floor: frozen module path
+    entrypoint = '"cauractl.cli:cli"'
     assert f"cauractl = {entrypoint}" in scripts
-    assert f"memclawctl = {entrypoint}" in scripts  # legacy-name-ok: permanent CLI alias
+    # The old console-script name still has to resolve to the SAME implementation
+    # -- an operator whose runbook still says the old name keeps working after
+    # the module underneath it was renamed.
+    assert f"memclawctl = {entrypoint}" in scripts  # legacy-name-ok: permanent console-script alias, which rule 3 keeps working
 
 
 def test_cli_help_lists_commands():
@@ -48,7 +52,7 @@ def test_cli_help_lists_commands():
 
 def test_rollback_errors_without_marker(monkeypatch, tmp_path):
     """Fresh install has no .memclaw-prev-version — should refuse cleanly."""
-    from memclawctl import cli as cli_mod
+    from cauractl import cli as cli_mod
 
     monkeypatch.setattr(cli_mod, "DEFAULT_HOME", tmp_path)
     runner = CliRunner()
@@ -59,7 +63,7 @@ def test_rollback_errors_without_marker(monkeypatch, tmp_path):
 
 def test_plugin_install_url_emits_copy_paste(monkeypatch, tmp_path):
     """install-url should print a ready-to-paste curl line and flag missing api-key."""
-    from memclawctl import cli as cli_mod
+    from cauractl import cli as cli_mod
 
     monkeypatch.setattr(cli_mod, "DEFAULT_HOME", tmp_path)
     (tmp_path / ".env").write_text("PUBLIC_HOSTNAME=onprem.example\n")
@@ -146,7 +150,7 @@ def test_status_calls_both_endpoints(monkeypatch):
     transport = httpx.MockTransport(handler)
 
     # Patch httpx.Client to use our mock transport
-    from memclawctl import cli as cli_mod
+    from cauractl import cli as cli_mod
 
     orig_client = cli_mod._client
 
@@ -184,7 +188,7 @@ def test_setup_reports_api_key(monkeypatch, tmp_path: Path):
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
-    from memclawctl import cli as cli_mod
+    from cauractl import cli as cli_mod
 
     monkeypatch.setattr(
         cli_mod,
@@ -204,3 +208,30 @@ def test_setup_reports_api_key(monkeypatch, tmp_path: Path):
     )
     assert result.exit_code == 0, result.output
     assert "mc_smoketestkey" in result.output
+
+
+def test_the_readme_installs_the_name_pyproject_declares():
+    """The documented `pip install` names the distribution that is built.
+
+    Added because a rename got this wrong: a bulk replace of the old command
+    name rewrote it INSIDE the longer distribution name too, leaving the README
+    telling operators to install a package that would never exist while
+    pyproject declared a different one. Nothing else in the suite compares the
+    two, so it was invisible until a reviewer read both files.
+
+    Reads both sides rather than hardcoding either, so it keeps holding through
+    the next rename.
+    """
+    import tomllib
+
+    declared = tomllib.loads((_HERE.parent / "pyproject.toml").read_text())["project"]["name"]
+    readme = (_HERE.parent / "README.md").read_text()
+
+    installs = re.findall(r"^pip install (\S+)", readme, re.MULTILINE)
+    assert installs, "README no longer shows a `pip install` line; this test is looking at nothing"
+    for named in installs:
+        assert named == declared, (
+            f"README says `pip install {named}` but pyproject declares "
+            f"name = {declared!r}. Following the README would install a "
+            f"different package than the one this directory builds."
+        )

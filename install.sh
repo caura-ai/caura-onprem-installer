@@ -9,7 +9,7 @@
 #
 # Precedence (highest wins): CLI flags > env vars (CAURA_*) > --config file
 # > defaults. Neither mode prompts — the one-liner auto-generates secrets
-# and hands off to /setup (web wizard or memclawctl), silent demands
+# and hands off to /setup (web wizard or cauractl), silent demands
 # everything upfront.
 #
 # Exit codes: 0 success · 1 preflight fail · 2 missing required input in
@@ -706,7 +706,7 @@ EMAIL_PROVIDER=${EMAIL_PROVIDER}
 BIND_ADDRESS=${BIND_ADDRESS}
 HTTP_PORT=80
 HTTPS_PORT=443
-# TLS mode signal — read by upgrade.sh and memclawctl to know whether
+# TLS mode signal — read by upgrade.sh and cauractl to know whether
 # to re-apply overlays on a `docker compose up -d`. Possible values:
 # self-signed, byo, letsencrypt, "" (HTTP-only).
 MEMCLAW_TLS_MODE=${TLS_MODE}
@@ -714,7 +714,7 @@ MEMCLAW_TLS_DOMAIN=${TLS_DOMAIN}
 MEMCLAW_TLS_EMAIL=${TLS_EMAIL}
 EOF
 
-# Capture install state for later reruns / memclawctl upgrade
+# Capture install state for later reruns / cauractl upgrade
 cat > "$MEMCLAW_HOME/install.state.json" <<EOF
 {
   "version": "${MEMCLAW_VERSION}",

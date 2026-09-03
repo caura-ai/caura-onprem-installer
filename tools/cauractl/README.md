@@ -1,4 +1,4 @@
-# memclawctl
+# cauractl
 
 Release A also installs `cauractl`; both console entries load this same Click
 command group, while existing runbooks keep their established default.
@@ -12,8 +12,8 @@ in connected and air-gapped installs.
 On the host, which is the only place it runs today:
 
 ```
-pipx install ./tools/memclawctl      # editable for dev
-pip install caura-memclawctl         # once published
+pipx install ./tools/cauractl      # editable for dev
+pip install cauractl               # once published
 ```
 
 ### There is no in-image path yet
@@ -44,21 +44,21 @@ install above is the supported path.
 
 | Command | Purpose |
 |---|---|
-| `memclawctl status` | Print `/setup/status` + `/license/status` side-by-side |
-| `memclawctl setup` | Interactive first-run wizard (CLI alternative to `/setup`) |
-| `memclawctl create-org --name Acme --slug acme` | Create another org |
-| `memclawctl create-admin --org acme --email x --password-stdin` | Add an admin to an existing org |
-| `memclawctl issue-api-key --org acme --label ci` | Mint a tenant API key |
-| `memclawctl license load /path/to/license.key` | Hot-reload a new license |
-| `memclawctl license status` | Pretty-print current license + days remaining |
-| `memclawctl backup --out /backups/` | Wraps scripts/backup.sh |
-| `memclawctl restore --from <tar.gz>` | Wraps scripts/restore.sh |
-| `memclawctl upgrade --to <version> [--dry-run] [--no-backup] [-y]` | Delegates to `$CAURA_HOME/upgrade.sh` — pre-upgrade pg_dump, pull, rolling up, health-stability check, auto-rollback |  <!-- legacy-name-floor: the shipped CLI's own command -->
-| `memclawctl rollback [-y]` | Roll back to the version recorded in `.memclaw-prev-version` (written by upgrade.sh) |
-| `memclawctl plugin install-url --fleet-id <id> [--api-url ...] [--api-key ...]` | Print the exact `curl -X POST \| bash` command a customer runs on an OpenClaw VM |
-| `memclawctl memory export <tenant> --api-key mc_...` | Stream all memories for a tenant to JSONL |
-| `memclawctl memory import <tenant> --api-key mc_... --file dump.jsonl` | Load a JSONL dump back into a tenant |
-| `memclawctl api <METHOD> <PATH> [--body file\|-] [--api-key mc_...]` | Generic authenticated passthrough to the running stack |
+| `cauractl status` | Print `/setup/status` + `/license/status` side-by-side |
+| `cauractl setup` | Interactive first-run wizard (CLI alternative to `/setup`) |
+| `cauractl create-org --name Acme --slug acme` | Create another org |
+| `cauractl create-admin --org acme --email x --password-stdin` | Add an admin to an existing org |
+| `cauractl issue-api-key --org acme --label ci` | Mint a tenant API key |
+| `cauractl license load /path/to/license.key` | Hot-reload a new license |
+| `cauractl license status` | Pretty-print current license + days remaining |
+| `cauractl backup --out /backups/` | Wraps scripts/backup.sh |
+| `cauractl restore --from <tar.gz>` | Wraps scripts/restore.sh |
+| `cauractl upgrade --to <version> [--dry-run] [--no-backup] [-y]` | Delegates to `$CAURA_HOME/upgrade.sh` — pre-upgrade pg_dump, pull, rolling up, health-stability check, auto-rollback |
+| `cauractl rollback [-y]` | Roll back to the version recorded in `.memclaw-prev-version` (written by upgrade.sh) |  <!-- legacy-name-floor: the on-disk marker file upgrade.sh writes -->
+| `cauractl plugin install-url --fleet-id <id> [--api-url ...] [--api-key ...]` | Print the exact `curl -X POST \| bash` command a customer runs on an OpenClaw VM |
+| `cauractl memory export <tenant> --api-key mc_...` | Stream all memories for a tenant to JSONL |
+| `cauractl memory import <tenant> --api-key mc_... --file dump.jsonl` | Load a JSONL dump back into a tenant |
+| `cauractl api <METHOD> <PATH> [--body file\|-] [--api-key mc_...]` | Generic authenticated passthrough to the running stack |
 
 ### Where each command runs
 

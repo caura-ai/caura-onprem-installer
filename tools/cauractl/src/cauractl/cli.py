@@ -1,4 +1,4 @@
-"""memclawctl CLI entrypoint."""
+"""cauractl CLI entrypoint."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import httpx
 from rich.console import Console
 from rich.table import Table
 
-from memclawctl.support import register as _register_support
+from cauractl.support import register as _register_support
 
 console = Console()
 
@@ -213,7 +213,7 @@ def upgrade(version: str, dry_run: bool, no_backup: bool, yes: bool) -> None:
     """Snapshot DB, pull target images, roll services, auto-rollback on health failure.
 
     Delegates to ``$MEMCLAW_HOME/upgrade.sh`` — the same script customers
-    run via ``curl | bash``. Running it through memclawctl lets ops call
+    run via ``curl | bash``. Running it through cauractl lets ops call
     it from an operator's shell with the same flags, without memorising
     the URL.
     """
@@ -406,7 +406,18 @@ def memory_export(
     type=click.Path(exists=True, dir_okay=False),
     help="JSONL file — one memory per line.",
 )
-@click.option("--agent-id", default="memclawctl-import", show_default=True)
+# NOT renamed with the rest of the CLI, and not an oversight. This default is
+# POSTed to /api/memories as ``agent_id`` and stored, so it is a value in
+# customer databases rather than a label in this file: changing it splits
+# "memories this tool imported" across two agent ids, silently, with the old
+# rows unreachable by the new name. Same class as the bundle manifest's
+# ``collector`` field, and it moves the same way -- deliberately, with the
+# reader of that column, not in a rename.
+@click.option(
+    "--agent-id",
+    default="memclawctl-import",  # legacy-name-ok: a persisted agent_id already written into customer rows, which rule 3 keeps working
+    show_default=True,
+)
 @click.option(
     "--dry-run", is_flag=True, help="Validate the file without writing anything."
 )

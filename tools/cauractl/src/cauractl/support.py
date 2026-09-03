@@ -5,8 +5,8 @@ support engineer needs to triage an incident without shell access:
 service logs (last 5 days, already rotated by TimedRotatingFileHandler),
 compose state, license status, install manifest, host fingerprint.
 
-Works offline (air-gapped customer runs `memclawctl support bundle`,
-emails us the tarball) and connected (`memclawctl support upload`
+Works offline (air-gapped customer runs `cauractl support bundle`,
+emails us the tarball) and connected (`cauractl support upload`
 ships it to support.caura.ai — implemented in a later step).
 
 Design choices:
@@ -122,7 +122,7 @@ def _cap_size(data: bytes, path: str) -> bytes:
     head = data[:half]
     tail = data[-half:]
     gap = (
-        f"\n\n--- [memclawctl: file {path} truncated — "
+        f"\n\n--- [cauractl: file {path} truncated — "
         f"{len(data):,} bytes, showing first + last {half:,}] ---\n\n"
     ).encode()
     return head + gap + tail
@@ -310,7 +310,12 @@ def build_bundle(
             manifest = {
                 "schema_version": 1,
                 "collected_at": datetime.now(UTC).isoformat(),
-                "collector": "memclawctl",
+                # ITEM E, AND IT IS EXCLUDED FROM THE RENAME. This is a wire
+                # value the support backend parses, not a label: caura-ops has
+                # to accept both spellings before it can move, and until then
+                # renaming it makes every uploaded bundle unrecognisable to
+                # the intake that reads this field.
+                "collector": "memclawctl",  # legacy-name-ok: a wire value the support backend parses, which rule 3 keeps working
                 "collector_version": _self_version(),
                 "deployment": fp,
                 "byte_total": byte_total,
@@ -364,12 +369,22 @@ def _docker_info() -> bytes:
 
 
 def _self_version() -> str:
-    try:
-        from importlib.metadata import version
+    # Both distribution names, new one first. The rename from the old
+    # distribution to ``cauractl`` does not reach a host that has not
+    # reinstalled, and this value goes into the support bundle's manifest
+    # beside ``collector`` -- so reading only the new name would report
+    # "unknown" to the support backend for every install still on the old
+    # package, which is worse than either name on its own.
+    from importlib.metadata import PackageNotFoundError, version
 
-        return version("caura-memclawctl")
-    except Exception:  # noqa: BLE001
-        return "unknown"
+    for dist in ("cauractl", "caura-memclawctl"):  # legacy-name-ok: the previous distribution name, still installed until a host reinstalls
+        try:
+            return version(dist)
+        except PackageNotFoundError:
+            continue
+        except Exception:  # noqa: BLE001
+            break
+    return "unknown"
 
 
 # ── Click commands ──────────────────────────────────────────────────────────
@@ -444,7 +459,7 @@ def support_bundle(
     size_mb = path.stat().st_size / (1024 * 1024)
     console.print(
         f"[green]Bundle ready[/green]: {path}  ({size_mb:.1f} MiB)\n"
-        "Secrets redacted. Review with: [bold]memclawctl support review "
+        "Secrets redacted. Review with: [bold]cauractl support review "
         f"{path}[/bold]"
     )
 
@@ -525,13 +540,13 @@ def support_review(bundle: Path, extract_to: Path | None) -> None:
 
     Lists every file + size + the manifest, then runs a leak-shape scan
     on the already-redacted content. Exits non-zero if any shape hits,
-    so `memclawctl support bundle && memclawctl support review …` can
+    so `cauractl support bundle && cauractl support review …` can
     be chained in CI.
     """
     with tarfile.open(bundle, "r:gz") as tar:
         manifest_member = _find_member(tar, "manifest.json")
         if manifest_member is None:
-            raise click.ClickException("No manifest.json — not a memclawctl bundle?")
+            raise click.ClickException("No manifest.json — not a cauractl bundle?")
         manifest_fh = tar.extractfile(manifest_member)
         assert manifest_fh is not None
         manifest = json.loads(manifest_fh.read())
@@ -573,7 +588,7 @@ def support_review(bundle: Path, extract_to: Path | None) -> None:
         extract_to.mkdir(parents=True, exist_ok=True)
         with tarfile.open(bundle, "r:gz") as tar:
             # data_filter landed in Python 3.12; falls back on older
-            # versions. The bundle is produced locally by memclawctl so
+            # versions. The bundle is produced locally by cauractl so
             # the risk of a path-traversal member is low, but the filter
             # gives us defence-in-depth at zero cost.
             try:
@@ -692,7 +707,7 @@ def support_upload(
             for member, leak_type, sample in hits[:10]:
                 console.print(f"  {member} → {leak_type}: [red]{sample}[/red]")
             console.print(
-                "\nEither re-bundle after upgrading memclawctl, or pass "
+                "\nEither re-bundle after upgrading cauractl, or pass "
                 "--skip-leak-scan after manual review."
             )
             raise click.exceptions.Exit(1)
@@ -702,7 +717,7 @@ def support_upload(
     with tarfile.open(bundle, "r:gz") as tar:
         manifest_member = _find_member(tar, "manifest.json")
         if manifest_member is None:
-            raise click.ClickException("No manifest.json — not a memclawctl bundle?")
+            raise click.ClickException("No manifest.json — not a cauractl bundle?")
         manifest_fh = tar.extractfile(manifest_member)
         assert manifest_fh is not None
         manifest_bytes = manifest_fh.read()
@@ -752,5 +767,5 @@ def support_upload(
 
 
 def register(cli_group: click.Group) -> None:
-    """Wire the support subgroup into the main memclawctl CLI."""
+    """Wire the support subgroup into the main cauractl CLI."""
     cli_group.add_command(support)

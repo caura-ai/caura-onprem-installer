@@ -34,7 +34,7 @@ is set, the built-in default applies exactly as before.
 
 The same rule holds at every layer: shell variables in `install.sh` and
 `upgrade.sh`, keys in `.env` read by Docker Compose, keys in `install.conf`, and
-the `memclawctl` CLI's own options.  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
+the `cauractl` CLI's own options.
 
 ## Precedence between sources
 
@@ -101,7 +101,7 @@ Every other key in `install.conf` (`hostname`, `admin_email`, `license`, the
 | `CAURA_BUNDLE_URL` | `MEMCLAW_BUNDLE_URL` | Where to fetch `bundle.tar.gz` from |  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
 | `CAURA_UPGRADE_URL` | `MEMCLAW_UPGRADE_URL` | Where `upgrade.sh` re-downloads itself from |  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
 | `CAURA_UPGRADE_REEXEC` | `MEMCLAW_UPGRADE_REEXEC` | Internal re-exec guard; not a knob to set |  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
-| **`memclawctl`** | | |  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
+| **`cauractl`** | | |
 | `CAURA_URL` | `MEMCLAW_URL` | Base URL of the stack |  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
 | `CAURA_ADMIN_KEY` | `MEMCLAW_ADMIN_KEY` | Admin JWT |  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
 | `CAURA_API_KEY` | `MEMCLAW_API_KEY` | Per-tenant API key for `memory export` / `import` |  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
@@ -144,6 +144,8 @@ exact characters, and they are not settings you can re-spell:
 - The `POSTGRES_DB` / `POSTGRES_USER` defaults — the database an existing install
   already owns its data under.
 - The `memclaw-onprem/*` air-gap image names — already inside tarballs customers hold.  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
-- `memclawctl` — the shipped CLI's own command.  <!-- legacy-name-ok: the legacy alias table, which is the surviving footprint -->
+- `memclawctl` — the console script an existing install already has on `$PATH`.  <!-- legacy-name-ok: a permanent console-script alias, which rule 3 keeps working -->
+  The command is `cauractl` now; both entry points resolve to the same
+  implementation, and dropping the old one is what would break a runbook.
 
 `scripts/do_not_touch_sentinel.py` fails CI if any of them is removed.

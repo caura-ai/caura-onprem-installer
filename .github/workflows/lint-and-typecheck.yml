@@ -95,7 +95,7 @@ jobs:
         # is the honest fix; suppressing the report is not.
         run: |
           python -m pip install --disable-pip-version-check --quiet 'ruff==0.16.0' 'mypy>=2.3.0,<3.0' 'pytest>=9.1.1,<10.0'
-          python -m pip install --disable-pip-version-check --quiet ./tools/memclawctl  # legacy-name-floor: the shipped CLI's path
+          python -m pip install --disable-pip-version-check --quiet ./tools/cauractl
 
       - name: Ruff lint
         run: ruff check scripts/
@@ -114,4 +114,4 @@ jobs:
         # checking anything. Naming the two real source directories avoids it
         # without an --exclude that would then need keeping in sync with
         # setuptools' choice of build directory.
-        run: mypy --check-untyped-defs scripts/ tests/ tools/memclawctl/src tools/memclawctl/tests  # legacy-name-floor: the shipped CLI's path
+        run: mypy --check-untyped-defs scripts/ tests/ tools/cauractl/src tools/cauractl/tests
