@@ -2,12 +2,14 @@ name: Lint and type-check
 
 # The first lint or type gate this repo has ever had. It ran pytest already --
 # env-dual-read.yml runs the suite in tests/ and the shipped CLI's own suite --
-# but nothing had ever run ruff or mypy over any of the 11 Python files here.
+# but nothing had ever run ruff or mypy over any of the 9 Python files here.
 #
-# That matters more here than the file count suggests: two of those files are the
-# programme's own gates (the legacy-name ratchet and the do-not-touch sentinel).
-# A gate nobody type-checks is a gate that can rot into passing, and this repo is
-# also public and customer-installed.
+# That matters more here than the file count suggests: one of those files is the
+# programme's own gate (the do-not-touch sentinel; the legacy-name ratchet used
+# to be a second one vendored here too, see below, and is now an org-required
+# workflow with nothing left in this tree to lint). A gate nobody type-checks is
+# a gate that can rot into passing, and this repo is also public and
+# customer-installed.
 #
 # SCOPES ARE ASYMMETRIC ON PURPOSE, and each side is what was measured to pass.
 # The alternative -- one job that lints everything and fixes ~20 findings in the
@@ -41,15 +43,11 @@ name: Lint and type-check
 # when someone edits this line, rather than the next time the runner resolves a
 # newer ruff.
 #
-# scripts/legacy_name_ratchet.py is vendored byte-for-byte from caura-ai/caura and
-# this step is the FIRST place it is lint-gated: OSS CI's ruff scopes do not
-# include its root scripts/, and caura-ops excludes the file from its own ruff
-# hooks because that repo wraps at 100 columns while the file is written at 88.
-# It is included here, and passes, precisely because this repo has no ruff config
-# and ruff's default line-length is 88 -- the style the file is already in. So
-# nothing gets reformatted and re-vendoring stays a clean diff. Adding a ruff
-# config here with a different line-length would break that, and would need the
-# caura-ops treatment (exclude from ruff, keep in mypy) rather than a reformat.
+# scripts/legacy_name_ratchet.py used to live here too, vendored byte-for-byte
+# from caura-ai/caura and lint-gated by this same step. It's gone now: the
+# legacy-name ratchet is an org-required workflow sourced from caura-ai/caura's
+# `ratchet-stable` branch, so there is nothing left in this repo's tree for ruff
+# or mypy to see.
 
 on:
   pull_request:
@@ -62,7 +60,7 @@ jobs:
   lint-and-typecheck:
     name: Lint and type-check
     runs-on: ubuntu-latest
-    # Seconds of work: 11 files, no database, no container, no fetch.
+    # Seconds of work: 9 files, no database, no container, no fetch.
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -82,11 +80,11 @@ jobs:
         # Three things, and each is load-bearing for the mypy step rather than
         # for running anything:
         #
-        # * pytest, because six of the eleven files `import pytest` and this job
+        # * pytest, because five of the nine files `import pytest` and this job
         #   does NOT pass --ignore-missing-imports. Without it installed mypy
         #   reports import-not-found for every one of them -- which is exactly
         #   what the first run of this workflow did. Same constraint the repo's
-        #   other three gates pin, so all four resolve the same pytest.
+        #   other two gates pin, so all three resolve the same pytest.
         # * the CLI package, so click / httpx / rich resolve the same way.
         #
         # Not passing --ignore-missing-imports is the deliberate part. It would
