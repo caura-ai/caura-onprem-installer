@@ -2,12 +2,12 @@ name: Do-not-touch sentinel
 
 # The other half of hard rule 4, and the half this repo was missing.
 #
-# legacy-name-ratchet.yml holds the old-brand count flat: it fails a file whose
-# count goes UP. That is directional, so a sweep which DELETES a load-bearing
-# string makes the count go DOWN and the ratchet reports it as progress. Both
-# gates are needed and neither subsumes the other -- the ratchet answers "did
-# this mint a new name?", this one answers "did this remove one something
-# already depends on?".
+# The legacy-name ratchet -- an org-required workflow now, not a job in this
+# repo -- holds the old-brand count flat: it fails a file whose count goes UP.
+# That is directional, so a sweep which DELETES a load-bearing string makes the
+# count go DOWN and the ratchet reports it as progress. Both gates are needed
+# and neither subsumes the other -- the ratchet answers "did this mint a new
+# name?", this one answers "did this remove one something already depends on?".
 #
 # The stakes are higher here than in the OSS tree for two reasons that have
 # nothing to do with symmetry. First, the failure lands on hardware we do not
@@ -58,9 +58,9 @@ jobs:
       # The parameterised test removes each string and asserts the gate fails,
       # so a dead row cannot be added quietly.
       - name: The gate's own tests
-        # Same constraint the ratchet job pins, so both copies resolve the same
-        # pytest. Bounded below the next major because a breaking release here
-        # would redden every PR in the repo, not just this gate's own.
+        # Same constraint the central ratchet workflow pins, so both resolve the
+        # same pytest. Bounded below the next major because a breaking release
+        # here would redden every PR in the repo, not just this gate's own.
         run: |
           python -m pip install --disable-pip-version-check --quiet 'pytest>=9.1.1,<10.0'
           python -m pytest tests/test_do_not_touch_sentinel.py -q
