@@ -100,10 +100,43 @@ def test_redact_strips_openai_style_tokens_outside_json():
     assert "***" in out
 
 
-def test_redact_strips_admin_api_keys():
-    blob = b"provisioned key mc_admin_abcdef1234567890 for tenant"
+@pytest.mark.parametrize(
+    "prefix", ["mc_admin_", "ca_admin_"], ids=["legacy", "canonical"]
+)
+def test_redact_strips_admin_api_keys(prefix: str):
+    """Both spellings, and the legacy one is not a transitional case.
+
+    install.sh has written mc_admin_ into customer .env files for years, on
+    machines no central rewrite reaches, so bundles carrying it keep arriving
+    indefinitely. The canonical spelling is pinned here before anything mints
+    it -- see the note over _GENERIC_TOKEN_REDACT for why that ordering is the
+    point rather than an accident.
+    """
+    blob = f"provisioned key {prefix}abcdef1234567890 for tenant".encode()
     out = _redact(blob).decode()
-    assert "mc_admin_abcdef1234567890" not in out
+    assert f"{prefix}abcdef1234567890" not in out
+    assert "***" in out
+
+
+@pytest.mark.parametrize(
+    "prefix", ["mc_admin_", "ca_admin_"], ids=["legacy", "canonical"]
+)
+def test_scan_for_leaks_flags_both_admin_key_spellings(tmp_path: Path, prefix: str):
+    """The redactor is one layer; this is the one that fails the bundle.
+
+    Both have to widen together. If only _GENERIC_TOKEN_REDACT knew the new
+    prefix, a key that reached the tarball by any path the redactor does not
+    run on -- the case scan_for_leaks exists for -- would ship silently.
+    """
+    bundle = tmp_path / "leaky.tar.gz"
+    with tarfile.open(bundle, "w:gz") as tar:
+        data = f"CORE_ADMIN_API_KEY={prefix}0123456789abcdef0123\n".encode()
+        info = tarfile.TarInfo(name="config/env.redacted")
+        info.size = len(data)
+        tar.addfile(info, fileobj=_bytesio(data))
+
+    hits = scan_for_leaks(bundle)
+    assert any(h[1] == "admin_key" for h in hits), hits
 
 
 def test_redact_handles_invalid_utf8():

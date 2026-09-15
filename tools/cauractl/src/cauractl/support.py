@@ -91,11 +91,24 @@ _ENV_LINE_REDACT = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Generic "Bearer <token>" / "sk-..." / "mc_admin_..." stragglers that
-# slip through field-based redaction (for example when an exception
-# formatter prints a dict repr without JSON-quoting).
+# Generic "Bearer <token>" / "sk-..." / "mc_admin_..." / "ca_admin_..."
+# stragglers that slip through field-based redaction (for example when an
+# exception formatter prints a dict repr without JSON-quoting).
+#
+# Both admin spellings, and the legacy one is permanent. install.sh has
+# written mc_admin_ into customer .env files for as long as this installer
+# has existed, on machines nothing central rewrites, so a bundle collected
+# from one has to stay redacted long after issuance moves. ca_admin_ is
+# added ALONGSIDE it, never in place of it.
+#
+# It is added BEFORE anything mints it, which is the whole point of doing
+# this first: the bundler that meets the first ca_admin_ key in the field is
+# whichever cauractl the customer already has, not the one shipped with the
+# flip. A redactor that learns the new prefix only when issuance changes is
+# a redactor every already-installed copy is missing.
 _GENERIC_TOKEN_REDACT = re.compile(
-    r"(Bearer\s+[A-Za-z0-9._\-]+|sk-[A-Za-z0-9_\-]{20,}|mc_admin_[A-Za-z0-9]+|"
+    r"(Bearer\s+[A-Za-z0-9._\-]+|sk-[A-Za-z0-9_\-]{20,}|"
+    r"(?:mc|ca)_admin_[A-Za-z0-9]+|"
     r"eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,})",
 )
 
@@ -483,7 +496,10 @@ def support_bundle(
 _LEAK_SHAPES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("openai_key", re.compile(r"sk-[A-Za-z0-9_\-]{20,}")),
     ("anthropic_key", re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}")),
-    ("mc_admin_key", re.compile(r"mc_admin_[A-Za-z0-9]{16,}")),
+    # Both spellings, for the reason spelled out over _GENERIC_TOKEN_REDACT.
+    # The label dropped its brand stem: `support review` prints it to the
+    # operator, and it now covers both families rather than one.
+    ("admin_key", re.compile(r"(?:mc|ca)_admin_[A-Za-z0-9]{16,}")),
     (
         "jwt_token",
         re.compile(r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"),
