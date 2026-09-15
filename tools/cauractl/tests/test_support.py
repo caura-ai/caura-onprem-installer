@@ -164,7 +164,7 @@ def test_build_bundle_writes_redacted_tarball(fake_home: Path, tmp_path: Path):
         include_compose_state=False,  # no docker in test env
     )
     assert bundle.exists()
-    assert bundle.name.startswith("memclaw-support-")
+    assert bundle.name.startswith("caura-support-")
     assert bundle.suffix == ".gz"
 
     with tarfile.open(bundle, "r:gz") as tar:

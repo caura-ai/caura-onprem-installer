@@ -251,7 +251,17 @@ def build_bundle(
     fp = _deployment_fingerprint(home)
 
     safe_host = re.sub(r"[^A-Za-z0-9_.\-]+", "-", fp["hostname"] or "unknown")
-    bundle_name = f"memclaw-support-{safe_host}-{ts}.tar.gz"
+    # This filename is for the operator who has to find the file, not a
+    # contract. CauraOps intake identifies a bundle by sha256(bundle_bytes)
+    # end to end: the upload route never reads ``bundle.filename``, the
+    # onprem_support_bundles table has no column for it, and the GCS object
+    # is named for the hash. A do-not-touch sentinel here once pinned the
+    # previous spelling on the stated grounds that intake "is documented as
+    # indexing uploads by this exact filename pattern" -- it was documented
+    # that way and never implemented that way, so the entry was removed
+    # rather than repointed. Recorded here so the claim is not rebuilt from
+    # the old docs.
+    bundle_name = f"caura-support-{safe_host}-{ts}.tar.gz"
     bundle_path = out_dir / bundle_name
 
     sha = hashlib.sha256()
@@ -261,7 +271,7 @@ def build_bundle(
     # Stream into a tempfile first so a partial bundle never appears
     # at the final path. Rename on success.
     tmp_fd, tmp_name = tempfile.mkstemp(
-        prefix=".memclaw-support-", suffix=".tar.gz", dir=out_dir
+        prefix=".caura-support-", suffix=".tar.gz", dir=out_dir
     )
     os.close(tmp_fd)
     try:
