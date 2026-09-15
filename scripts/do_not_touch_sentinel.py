@@ -294,6 +294,31 @@ SENTINELS: tuple[Sentinel, ...] = (
         kind=LITERAL,
         breaks="bundle building raises PackageNotFoundError if the distribution is renamed alone",
     ),
+    # -- The generated admin key and its own redaction regex. An emitter and --
+    # -- a matcher that must move together. caura-ai/caura-onprem has pinned --
+    # -- this pair for a while; this repo mints the key AND carries the ------
+    # -- matcher and had pinned neither, so the coupling was held in one -----
+    # -- repo and unheld in the one that actually ships the installer. -------
+    # --                                                                     --
+    # -- They are deliberately NOT in step right now: the matcher already ----
+    # -- accepts ca_admin_, the emitter below still writes mc_admin_. That is -
+    # -- the safe direction and the only safe one. A matcher that lags its ---
+    # -- emitter ships live admin keys in support bundles, and it lags for ---
+    # -- as long as it takes every customer to upgrade cauractl -- which is --
+    # -- why the widening goes first and alone. Moving the emitter is a ------
+    # -- separate change, and it is gated on this one being released. --------
+    Sentinel(
+        path="install.sh",
+        text='CORE_ADMIN_API_KEY="mc_admin_$(random_hex 24)"',
+        kind=LITERAL,
+        breaks="the prefix support.py's own redaction regex is written to match; changing one without the other means every future support bundle ships a live admin key in the clear",
+    ),
+    Sentinel(
+        path="tools/cauractl/src/cauractl/support.py",
+        text='("admin_key", re.compile(r"(?:mc|ca)_admin_[A-Za-z0-9]{16,}"))',
+        kind=LITERAL,
+        breaks="the leak scan that must keep matching whatever install.sh actually generates, in both spellings; the reverse half of the emitter/matcher pair above, and the gate that refuses to call a bundle reviewed when one slips through",
+    ),
     # -- A persisted value, found while renaming the CLI around it. Nothing ---
     # -- in this repo fails when it changes; the damage is in customer --------
     # -- databases, which is exactly the coupling this list exists to hold. ---

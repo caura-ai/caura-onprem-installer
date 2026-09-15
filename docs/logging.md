@@ -120,7 +120,8 @@ Runs in-memory, per file, before it hits the tarball. Patterns cover:
   `postgres_password`, `github_client_secret`, `email_api_key`,
   `smtp_password`, `license_key`, `authorization`, `cookie`, `token`, `secret`.
 - `.env` shell lines for the same names.
-- Generic stragglers: `Bearer <token>`, `sk-…`, `mc_admin_…`, 3-part JWTs.
+- Generic stragglers: `Bearer <token>`, `sk-…`, `mc_admin_…`,
+  `ca_admin_…`, 3-part JWTs.
 
 `cauractl support review <bundle>` runs a second-pass shape scanner
 on the already-redacted bytes and exits non-zero if anything slips
