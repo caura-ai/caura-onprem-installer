@@ -87,14 +87,14 @@ support triage:
 ```
 $ cauractl support bundle
 Collecting from /opt/memclaw → /tmp
-Bundle ready: /tmp/memclaw-support-host-20260422T114502Z.tar.gz  (14.3 MiB)
+Bundle ready: /tmp/caura-support-host-20260422T114502Z.tar.gz  (14.3 MiB)
 Secrets redacted. Review with: cauractl support review …
 ```
 
 ### What's inside
 
 ```
-memclaw-support-<host>-<timestamp>.tar.gz
+caura-support-<host>-<timestamp>.tar.gz
 ├── manifest.json                    # collected_at, license_id, version, sha256
 ├── logs/
 │   ├── core-api/core-api.log        # redacted; 5 days
