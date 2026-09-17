@@ -295,12 +295,12 @@ def _resolve_defaults(env: dict[str, str], var: str) -> str:
     ("var", "old", "new", "old_value", "new_value", "expected"),
     [
         # (shell var, old env name, new env name, old value, new value, expected)
-        ("MEMCLAW_HOME", "MEMCLAW_HOME", "CAURA_HOME", "/srv/old", "", "/srv/old"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-        ("MEMCLAW_HOME", "MEMCLAW_HOME", "CAURA_HOME", "/srv/old", "/srv/new", "/srv/new"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        ("CAURA_HOME", "MEMCLAW_HOME", "CAURA_HOME", "/srv/old", "", "/srv/old"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        ("CAURA_HOME", "MEMCLAW_HOME", "CAURA_HOME", "/srv/old", "/srv/new", "/srv/new"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
         ("TLS_MODE", "MEMCLAW_TLS_MODE", "CAURA_TLS_MODE", "byo", "", "byo"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
         ("HOSTNAME", "MEMCLAW_HOSTNAME", "CAURA_HOSTNAME", "a.example", "", "a.example"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-        ("MEMCLAW_VERSION", "MEMCLAW_VERSION", "CAURA_VERSION", "v1.2.3", "", "v1.2.3"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-        ("MEMCLAW_VERSION", "MEMCLAW_VERSION", "CAURA_VERSION", "v1.2.3", "v9.9.9", "v9.9.9"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        ("CAURA_VERSION", "MEMCLAW_VERSION", "CAURA_VERSION", "v1.2.3", "", "v1.2.3"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        ("CAURA_VERSION", "MEMCLAW_VERSION", "CAURA_VERSION", "v1.2.3", "v9.9.9", "v9.9.9"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
         ("ADMIN_PASSWORD", "MEMCLAW_ADMIN_PASSWORD", "CAURA_ADMIN_PASSWORD", "s3cret", "", "s3cret"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
         ("BIND_ADDRESS", "MEMCLAW_BIND_ADDRESS", "CAURA_BIND_ADDRESS", "127.0.0.1", "", "127.0.0.1"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
     ],
@@ -315,14 +315,14 @@ def test_install_defaults_take_the_first_non_empty_name(
 
 def test_install_defaults_still_apply_when_neither_name_is_set():
     """The shipped defaults are untouched by the dual-read."""
-    assert _resolve_defaults({}, "MEMCLAW_HOME") == "/opt/memclaw"  # legacy-name-floor: the floor install path
+    assert _resolve_defaults({}, "CAURA_HOME") == "/opt/memclaw"  # legacy-name-floor: the floor install path
     assert _resolve_defaults({}, "TLS_MODE") == "self-signed"
     assert _resolve_defaults({}, "EMAIL_PROVIDER") == "log"
 
 
 def test_new_name_alone_is_enough():
     """A customer who only ever sets the new spelling gets a working install."""
-    assert _resolve_defaults({"CAURA_HOME": "/srv/new"}, "MEMCLAW_HOME") == "/srv/new"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    assert _resolve_defaults({"CAURA_HOME": "/srv/new"}, "CAURA_HOME") == "/srv/new"
     assert _resolve_defaults({"CAURA_TLS_MODE": "byo"}, "TLS_MODE") == "byo"
 
 
@@ -394,7 +394,7 @@ def _current_version(tmp_path: Path, env_body: str) -> str:
     (home / ".env").write_text(env_body, encoding="utf-8")
     script = (
         "set -euo pipefail\n"
-        f'MEMCLAW_HOME="{home}"\n'  # legacy-name-ok: test drives the old spelling, which rule 3 keeps working
+        f'CAURA_HOME="{home}"\n'  # the internal variable the extracted block reads
         f"{_ENV_KEY_FN}\n{_CURRENT_VERSION_FN}\n"
         "current_version"
     )
@@ -630,14 +630,14 @@ def _parse_conf(tmp_path: Path, body: str, var: str) -> str:
 def test_install_conf_accepts_the_new_key_names(tmp_path):
     """The whitelist `case` must name the new keys, or they are dropped silently."""
     body = 'caura_home = "/srv/new"\ncaura_version = "v9.9.9"\n'
-    assert _parse_conf(tmp_path, body, "MEMCLAW_HOME") == "/srv/new"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-    assert _parse_conf(tmp_path, body, "MEMCLAW_VERSION") == "v9.9.9"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    assert _parse_conf(tmp_path, body, "CAURA_HOME") == "/srv/new"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    assert _parse_conf(tmp_path, body, "CAURA_VERSION") == "v9.9.9"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
 
 
 def test_install_conf_old_keys_keep_working(tmp_path):
     body = 'memclaw_home = "/srv/old"\nmemclaw_version = "v1.0.0"\n'  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-    assert _parse_conf(tmp_path, body, "MEMCLAW_HOME") == "/srv/old"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-    assert _parse_conf(tmp_path, body, "MEMCLAW_VERSION") == "v1.0.0"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    assert _parse_conf(tmp_path, body, "CAURA_HOME") == "/srv/old"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    assert _parse_conf(tmp_path, body, "CAURA_VERSION") == "v1.0.0"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
 
 
 @pytest.mark.parametrize("order", ["new_first", "old_first"])
@@ -650,7 +650,7 @@ def test_install_conf_blank_new_key_never_clobbers_a_filled_old_one(tmp_path, or
     old = 'memclaw_home = "/srv/old"'  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
     new = "caura_home ="
     body = f"{new}\n{old}\n" if order == "new_first" else f"{old}\n{new}\n"
-    assert _parse_conf(tmp_path, body, "MEMCLAW_HOME") == "/srv/old", (  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    assert _parse_conf(tmp_path, body, "CAURA_HOME") == "/srv/old", (  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
         f"{BLANK_NEW_BEATEN_BY_OLD} ({order})"
     )
 
@@ -662,7 +662,7 @@ def test_install_conf_blank_old_key_does_not_blank_the_install_root(tmp_path):
     "present and blank" is not hypothetical here — it is what the template does.
     """
     body = "memclaw_home =\n"  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-    assert _parse_conf(tmp_path, body, "MEMCLAW_HOME") == "/opt/memclaw"  # legacy-name-floor: the floor install path
+    assert _parse_conf(tmp_path, body, "CAURA_HOME") == "/opt/memclaw"  # legacy-name-floor: the floor install path
 
 
 def test_both_config_spellings_have_identical_precedence(tmp_path):
@@ -690,8 +690,8 @@ def test_both_config_spellings_have_identical_precedence(tmp_path):
     keeping.
     """
     for old_key, new_key, var in (
-        ("memclaw_home", "caura_home", "MEMCLAW_HOME"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-        ("memclaw_version", "caura_version", "MEMCLAW_VERSION"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        ("memclaw_home", "caura_home", "CAURA_HOME"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        ("memclaw_version", "caura_version", "CAURA_VERSION"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
         ):
         with_old = _parse_conf(tmp_path, f'{old_key} = "/from-conf"\n', var)
         with_new = _parse_conf(tmp_path, f'{new_key} = "/from-conf"\n', var)
@@ -1084,7 +1084,7 @@ def test_the_shipped_install_conf_parses_to_clean_values(tmp_path):
     """
     conf = _read("install.conf.example")
     checks = {
-        "MEMCLAW_VERSION": "v1.0.0",  # legacy-name-ok: the shell variable the parser fills, whose name is unchanged
+        "CAURA_VERSION": "v1.0.0",
         "EMAIL_PROVIDER": "log",
         "LLM_PROVIDER": "openai",
         "EMBEDDING_PROVIDER": "local",
@@ -1404,10 +1404,10 @@ _CONF_BLOCK = _extract_block(
 
 # (config key, shell variable, CLI flag or None)
 PRECEDENCE_KEYS = [
-    ("memclaw_home", "MEMCLAW_HOME", "--memclaw-home"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-    ("caura_home", "MEMCLAW_HOME", "--memclaw-home"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-    ("memclaw_version", "MEMCLAW_VERSION", "--version"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-    ("caura_version", "MEMCLAW_VERSION", "--version"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    ("memclaw_home", "CAURA_HOME", "--memclaw-home"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    ("caura_home", "CAURA_HOME", "--memclaw-home"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    ("memclaw_version", "CAURA_VERSION", "--version"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+    ("caura_version", "CAURA_VERSION", "--version"),  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
     ("email_provider", "EMAIL_PROVIDER", "--email-provider"),
     ("embedding_provider", "EMBEDDING_PROVIDER", "--embedding-provider"),
     ("jwt_secret_file", "JWT_SECRET_FILE", None),
@@ -1466,7 +1466,7 @@ def test_the_config_file_still_sets_every_key(tmp_path, key, var, flag):
 @pytest.mark.parametrize(("key", "var", "flag"), PRECEDENCE_KEYS)
 def test_an_environment_variable_beats_the_config_file(tmp_path, key, var, flag):
     """The documented order, for every key rather than the thirteen that had it."""
-    suffix = var[len(OLD_PREFIX):] if var.startswith(OLD_PREFIX) else var
+    suffix = var.removeprefix(OLD_PREFIX).removeprefix(NEW_PREFIX)
     got = _resolve(
         tmp_path, f'{key} = "from-conf"\n', var,
         env={f"{NEW_PREFIX}{suffix}": "from-env"},
@@ -1490,8 +1490,8 @@ def test_a_cli_flag_beats_the_config_file(tmp_path, key, var, flag):
 def test_the_shipped_default_still_lands_when_nothing_sets_the_key(tmp_path, key, var, flag):
     """Deferring the defaults must not have dropped them."""
     expected = {
-        "MEMCLAW_HOME": "/opt/memclaw",  # legacy-name-floor: the floor install path
-        "MEMCLAW_VERSION": "v2.8.4",  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
+        "CAURA_HOME": "/opt/memclaw",  # legacy-name-floor: the floor install path
+        "CAURA_VERSION": "v2.8.4",
         "EMAIL_PROVIDER": "log",
         "EMBEDDING_PROVIDER": "local",
         "OFFLINE": "false",

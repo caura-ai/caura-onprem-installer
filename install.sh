@@ -42,8 +42,7 @@ VERSION="1.0.0"
 # shared suffix: the old names have to stay greppable, because grepping for them
 # is how this migration is tracked.
 # Defaults for these six are NOT applied here — see "Apply defaults" below.
-MEMCLAW_HOME="${MEMCLAW_HOME:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
-MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 CONFIG_FILE=""
 NON_INTERACTIVE="false"
 OFFLINE="${MEMCLAW_OFFLINE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
@@ -91,8 +90,7 @@ EMAIL_PROVIDER="${MEMCLAW_EMAIL_PROVIDER:-}"  # legacy-name-ok: dual-read of the
 EMAIL_PROVIDER="${CAURA_EMAIL_PROVIDER:-$EMAIL_PROVIDER}"
 EMBEDDING_PROVIDER="${MEMCLAW_EMBEDDING_PROVIDER:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 EMBEDDING_PROVIDER="${CAURA_EMBEDDING_PROVIDER:-$EMBEDDING_PROVIDER}"
-MEMCLAW_VERSION="${MEMCLAW_VERSION:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
-MEMCLAW_VERSION="${CAURA_VERSION:-$MEMCLAW_VERSION}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+CAURA_VERSION="${CAURA_VERSION:-${MEMCLAW_VERSION:-}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 
 # TLS — four modes:
 #   "self-signed" (default!) — we generate a 10y RSA-2048 cert on first
@@ -157,8 +155,8 @@ while [ $# -gt 0 ]; do
     --postgres-require-ssl)      POSTGRES_REQUIRE_SSL="true";   shift   ;;
     --email-provider)            EMAIL_PROVIDER="$2";           shift 2 ;;
     --embedding-provider)        EMBEDDING_PROVIDER="$2";       shift 2 ;;
-    --memclaw-home)              MEMCLAW_HOME="$2";             shift 2 ;;
-    --version)                   MEMCLAW_VERSION="$2";          shift 2 ;;
+    --memclaw-home)              CAURA_HOME="$2";               shift 2 ;;  # legacy-name-ok: the flag operators already have in their scripts; rule 3 keeps it working
+    --version)                   CAURA_VERSION="$2";            shift 2 ;;
     --tls-self-signed)           TLS_MODE="self-signed";        shift   ;;
     --tls-cert)                  TLS_CERT_FILE="$2"; TLS_MODE="byo"; shift 2 ;;
     --tls-key)                   TLS_KEY_FILE="$2";             shift 2 ;;
@@ -249,9 +247,9 @@ if [ -n "$CONFIG_FILE" ]; then
   # environment or a CLI flag already supplied: a home key with nothing after
   # the `=` is a half-filled template, not an instruction to install into "".
   _conf_home="${_conf_caura_home:-$_conf_memclaw_home}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
-  [ -n "$_conf_home" ] && [ -z "$MEMCLAW_HOME" ] && MEMCLAW_HOME="$_conf_home"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  [ -n "$_conf_home" ] && [ -z "$CAURA_HOME" ] && CAURA_HOME="$_conf_home"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   _conf_version="${_conf_caura_version:-$_conf_memclaw_version}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
-  [ -n "$_conf_version" ] && [ -z "$MEMCLAW_VERSION" ] && MEMCLAW_VERSION="$_conf_version"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  [ -n "$_conf_version" ] && [ -z "$CAURA_VERSION" ] && CAURA_VERSION="$_conf_version"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 fi
 
 # ── Apply defaults ─────────────────────────────────────────────────────────
@@ -277,8 +275,8 @@ fi
 # (its default lands further down, next to the generated secrets); this is that
 # pattern applied to the rest.
 _EMBEDDING_PROVIDER_CHOSEN="$EMBEDDING_PROVIDER"   # before the default lands
-MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"  # legacy-name-floor: floor, and the install root default
-MEMCLAW_VERSION="${MEMCLAW_VERSION:-v2.8.4}"  # legacy-name-floor: the shipped release pin, unchanged
+CAURA_HOME="${CAURA_HOME:-/opt/memclaw}"  # legacy-name-floor: floor, and the install root default
+CAURA_VERSION="${CAURA_VERSION:-v2.8.4}"
 OFFLINE="${OFFLINE:-false}"
 SKIP_ADMIN="${SKIP_ADMIN:-false}"
 EMAIL_PROVIDER="${EMAIL_PROVIDER:-log}"
@@ -288,7 +286,7 @@ EMBEDDING_PROVIDER="${EMBEDDING_PROVIDER:-local}"
 # The child re-parses "$@" anyway (which is the primary mechanism), but
 # this makes the handoff robust against wrappers that sanitise argv
 # (some CI runners, IDE terminals).
-export MEMCLAW_HOME MEMCLAW_VERSION
+export MEMCLAW_HOME="$CAURA_HOME" MEMCLAW_VERSION="$CAURA_VERSION"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 export MEMCLAW_OFFLINE="$OFFLINE" MEMCLAW_SKIP_ADMIN="$SKIP_ADMIN"
 export MEMCLAW_HOSTNAME="$HOSTNAME" MEMCLAW_ADMIN_EMAIL="$ADMIN_EMAIL"
 export MEMCLAW_ADMIN_PASSWORD="$ADMIN_PASSWORD" MEMCLAW_ADMIN_PASSWORD_FILE="$ADMIN_PASSWORD_FILE"
@@ -301,7 +299,7 @@ export MEMCLAW_LICENSE="$LICENSE_PATH" MEMCLAW_LICENSE_URL="$LICENSE_URL"
 # name first, would take the stale one. Only reachable when argv IS sanitised
 # (otherwise the child re-parses the flag and corrects itself), which is exactly
 # the case this export block exists for.
-export CAURA_HOME="$MEMCLAW_HOME" CAURA_VERSION="$MEMCLAW_VERSION"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+export CAURA_HOME="$CAURA_HOME" CAURA_VERSION="$CAURA_VERSION"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 export CAURA_OFFLINE="$OFFLINE" CAURA_SKIP_ADMIN="$SKIP_ADMIN"
 export CAURA_HOSTNAME="$HOSTNAME" CAURA_ADMIN_EMAIL="$ADMIN_EMAIL"
 export CAURA_ADMIN_PASSWORD="$ADMIN_PASSWORD" CAURA_ADMIN_PASSWORD_FILE="$ADMIN_PASSWORD_FILE"
@@ -426,7 +424,7 @@ if [ -z "$ADMIN_PASSWORD_RESOLVED" ] && [ -n "$ADMIN_PASSWORD_FILE" ]; then
 fi
 
 # ── Stage install root ─────────────────────────────────────────────────────
-mkdir -p "$MEMCLAW_HOME"/{license,nginx,scripts,backups}
+mkdir -p "$CAURA_HOME"/{license,nginx,scripts,backups}
 
 # License dir is writable by the container user so the first-run wizard's
 # POST /api/setup/license can drop license.key into the mount. Install.sh
@@ -446,7 +444,7 @@ mkdir -p "$MEMCLAW_HOME"/{license,nginx,scripts,backups}
 # world-write on the dir only lets the container *write* the file; anything
 # placed there still has to verify against the public key baked into the
 # image. Same rationale as the logs dir below.
-chmod 1777 "$MEMCLAW_HOME/license"
+chmod 1777 "$CAURA_HOME/license"
 
 # Log sink directories — bind-mounted into each container at
 # /var/log/memclaw/<service>/. The containers run as `appuser` (non-root,
@@ -456,8 +454,8 @@ chmod 1777 "$MEMCLAW_HOME/license"
 # customer-facing anyway (grepped from support bundles), not secrets.
 for svc in platform-storage-api platform-auth-api platform-admin-api \
            platform-audit-api core-storage-api core-api gateway; do
-  mkdir -p "$MEMCLAW_HOME/logs/$svc"
-  chmod 0777 "$MEMCLAW_HOME/logs/$svc"
+  mkdir -p "$CAURA_HOME/logs/$svc"
+  chmod 0777 "$CAURA_HOME/logs/$svc"
 done
 
 # Copy compose + scripts + docs from the bundle dir (wherever install.sh
@@ -509,18 +507,18 @@ for f in docker-compose.yml docker-compose.airgap.yml \
          docker-compose.embedder.yml docker-compose.embedder.airgap.yml \
          docker-compose.tls-letsencrypt.yml \
          .env.example install.conf.example; do
-  [ -f "$SRC_DIR/$f" ] && cp -f "$SRC_DIR/$f" "$MEMCLAW_HOME/"
+  [ -f "$SRC_DIR/$f" ] && cp -f "$SRC_DIR/$f" "$CAURA_HOME/"
 done
 for d in nginx scripts docs license; do
-  [ -d "$SRC_DIR/$d" ] && cp -Rf "$SRC_DIR/$d" "$MEMCLAW_HOME/"
+  [ -d "$SRC_DIR/$d" ] && cp -Rf "$SRC_DIR/$d" "$CAURA_HOME/"
 done
 
 # ── Materialize TLS certs ──────────────────────────────────────────────────
 # Three paths land cert.pem + key.pem in the install root's tls/ directory, which is
 # bind-mounted into the gateway container at /etc/nginx/tls/. The nginx
 # entrypoint detects them and renders the TLS template instead of HTTP.
-mkdir -p "$MEMCLAW_HOME/tls"
-chmod 0755 "$MEMCLAW_HOME/tls"
+mkdir -p "$CAURA_HOME/tls"
+chmod 0755 "$CAURA_HOME/tls"
 
 case "$TLS_MODE" in
   byo)
@@ -528,10 +526,10 @@ case "$TLS_MODE" in
       || die "--tls-cert requires --tls-key (and vice versa)" 2
     [ -f "$TLS_CERT_FILE" ] || die "--tls-cert: file not found: $TLS_CERT_FILE" 2
     [ -f "$TLS_KEY_FILE" ]  || die "--tls-key: file not found: $TLS_KEY_FILE" 2
-    cp -f "$TLS_CERT_FILE" "$MEMCLAW_HOME/tls/cert.pem"
-    cp -f "$TLS_KEY_FILE"  "$MEMCLAW_HOME/tls/key.pem"
-    chmod 0644 "$MEMCLAW_HOME/tls/cert.pem"
-    chmod 0600 "$MEMCLAW_HOME/tls/key.pem"
+    cp -f "$TLS_CERT_FILE" "$CAURA_HOME/tls/cert.pem"
+    cp -f "$TLS_KEY_FILE"  "$CAURA_HOME/tls/key.pem"
+    chmod 0644 "$CAURA_HOME/tls/cert.pem"
+    chmod 0600 "$CAURA_HOME/tls/key.pem"
     log "TLS: bring-your-own cert installed."
     ;;
   letsencrypt)
@@ -543,14 +541,14 @@ case "$TLS_MODE" in
         ;;
     esac
     log "TLS: Let's Encrypt via Caddy sidecar (domain=$TLS_DOMAIN, email=$TLS_EMAIL)"
-    mkdir -p "$MEMCLAW_HOME/caddy"
+    mkdir -p "$CAURA_HOME/caddy"
     # Caddyfile — Caddy autodetects the domain at the top of the block,
     # provisions a cert via ACME HTTP-01, renews automatically. The
     # `tls` line gives ACME the contact email. reverse_proxy points at
     # the gateway service inside the docker network (which now listens
     # only on 80 internally — host port mapping is dropped by the
     # tls-letsencrypt overlay).
-    cat > "$MEMCLAW_HOME/caddy/Caddyfile" <<EOF
+    cat > "$CAURA_HOME/caddy/Caddyfile" <<EOF
 {
     email $TLS_EMAIL
     # Comment out for production — uncomment to test against the LE
@@ -568,13 +566,13 @@ $TLS_DOMAIN {
     }
 }
 EOF
-    chmod 0644 "$MEMCLAW_HOME/caddy/Caddyfile"
+    chmod 0644 "$CAURA_HOME/caddy/Caddyfile"
     # Make sure no stale cert remains in the install root's tls/ directory — it would confuse the
     # gateway entrypoint into serving its own TLS instead of plain HTTP.
-    rm -f "$MEMCLAW_HOME/tls/cert.pem" "$MEMCLAW_HOME/tls/key.pem"
+    rm -f "$CAURA_HOME/tls/cert.pem" "$CAURA_HOME/tls/key.pem"
     ;;
   self-signed)
-    if [ ! -f "$MEMCLAW_HOME/tls/cert.pem" ] || [ ! -f "$MEMCLAW_HOME/tls/key.pem" ]; then
+    if [ ! -f "$CAURA_HOME/tls/cert.pem" ] || [ ! -f "$CAURA_HOME/tls/key.pem" ]; then
       command -v openssl >/dev/null || die "--tls-self-signed requires openssl on the host" 1
       cn="${TLS_DOMAIN:-${HOSTNAME:-caura.local}}"
       log "TLS: generating self-signed cert for CN=$cn (10 years, RSA-2048)"
@@ -584,14 +582,14 @@ EOF
       openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
         -subj "/CN=$cn/O=Caura On-Prem" \
         -addext "subjectAltName=$_san" \
-        -keyout "$MEMCLAW_HOME/tls/key.pem" \
-        -out    "$MEMCLAW_HOME/tls/cert.pem" \
+        -keyout "$CAURA_HOME/tls/key.pem" \
+        -out    "$CAURA_HOME/tls/cert.pem" \
         2>/dev/null \
         || die "openssl failed to generate self-signed cert" 1
-      chmod 0644 "$MEMCLAW_HOME/tls/cert.pem"
-      chmod 0600 "$MEMCLAW_HOME/tls/key.pem"
+      chmod 0644 "$CAURA_HOME/tls/cert.pem"
+      chmod 0600 "$CAURA_HOME/tls/key.pem"
     else
-      log "TLS: reusing existing self-signed cert at $MEMCLAW_HOME/tls/"
+      log "TLS: reusing existing self-signed cert at $CAURA_HOME/tls/"
     fi
     ;;
   "")
@@ -640,7 +638,7 @@ fi
 # symlink TOCTOU for no benefit. A legacy key with bad perms is fixed by
 # re-running with --license (or --license-url), which re-materializes safely.
 if [ -n "$LICENSE_PATH" ] || [ -n "$LICENSE_URL" ]; then
-  license_tmp=$(mktemp "$MEMCLAW_HOME/license/.license.XXXXXX") \
+  license_tmp=$(mktemp "$CAURA_HOME/license/.license.XXXXXX") \
     || die "Could not create a temp file in license/" 4
   # The trap removes the staged temp on every exit path — a die (which calls
   # exit), normal completion, or a signal — so the guards below just die.
@@ -657,15 +655,15 @@ if [ -n "$LICENSE_PATH" ] || [ -n "$LICENSE_URL" ]; then
   fi
   chmod 0644 "$license_tmp" \
     || die "Could not set permissions on staged license" 4
-  mv -f "$license_tmp" "$MEMCLAW_HOME/license/license.key" \
+  mv -f "$license_tmp" "$CAURA_HOME/license/license.key" \
     || die "Could not install license/license.key" 4
   trap - EXIT INT TERM HUP
 fi
 
 # Advisory only — chmod on an existing name here is TOCTOU (chmod follows symlinks).
 # Warn so operators can diagnose EACCES in platform-auth-api without guessing.
-if [ -f "$MEMCLAW_HOME/license/license.key" ]; then
-  key_mode=$(stat -c '%a' "$MEMCLAW_HOME/license/license.key" 2>/dev/null || true)
+if [ -f "$CAURA_HOME/license/license.key" ]; then
+  key_mode=$(stat -c '%a' "$CAURA_HOME/license/license.key" 2>/dev/null || true)
   case "$key_mode" in
     *4|*5|*6|*7) ;;
     *) warn "license/license.key exists but is not world-readable (mode $key_mode)." \
@@ -681,7 +679,7 @@ fi
 # exemption comment marking one — would land in their file as text. The keys the
 # heredoc writes are unchanged; only the value this one resolves is.
 MEMCLAW_OPS_VERSION="${CAURA_OPS_VERSION:-${MEMCLAW_OPS_VERSION:-}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
-cat > "$MEMCLAW_HOME/.env" <<EOF
+cat > "$CAURA_HOME/.env" <<EOF
 # Rendered by install.sh $(date -u +%Y-%m-%dT%H:%M:%SZ). Do not edit while
 # the stack is running — rerun ./install.sh to regenerate.
 MEMCLAW_VERSION=${MEMCLAW_VERSION}
@@ -722,9 +720,9 @@ MEMCLAW_TLS_EMAIL=${TLS_EMAIL}
 EOF
 
 # Capture install state for later reruns / cauractl upgrade
-cat > "$MEMCLAW_HOME/install.state.json" <<EOF
+cat > "$CAURA_HOME/install.state.json" <<EOF
 {
-  "version": "${MEMCLAW_VERSION}",
+  "version": "${CAURA_VERSION}",
   "hostname": "${HOSTNAME}",
   "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "offline": ${OFFLINE},
@@ -749,7 +747,7 @@ if [ -z "$LOCAL_EMBEDDINGS" ]; then
   fi
 fi
 
-cd "$MEMCLAW_HOME"
+cd "$CAURA_HOME"
 COMPOSE_FILES=(-f docker-compose.yml)
 
 # Let's Encrypt overlay: must come BEFORE airgap/embedder overlays so its
@@ -886,7 +884,7 @@ if [ "$SKIP_ADMIN" != "true" ] && [ "$NON_INTERACTIVE" = "true" ]; then
     || die "/setup/admin failed — check logs: docker compose logs platform-auth-api" 5
   API_KEY=$(echo "$resp" | sed -n 's/.*"api_key":"\([^"]*\)".*/\1/p')
   # Machine-readable result for Ansible
-  cat > "$MEMCLAW_HOME/install-result.json" <<EOF
+  cat > "$CAURA_HOME/install-result.json" <<EOF
 {"url": "${URL}", "admin_email": "${ADMIN_EMAIL}", "api_key": "${API_KEY}"}
 EOF
   printf '\n\033[32m=== Caura Install Complete ===\033[0m\n'

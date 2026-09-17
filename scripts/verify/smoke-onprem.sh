@@ -18,8 +18,7 @@ set -euo pipefail
 
 # The install root, under either spelling — old name first, CAURA_HOME
 # overriding only when non-empty. See scripts/backup.sh for the full note.
-MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"
-MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"  # legacy-name-floor: floor, and the install root default — unchanged for existing installs
 BASE_URL="${BASE_URL:-}"
 ADMIN_JWT="${ADMIN_JWT:-}"
 ADMIN_API_KEY="${ADMIN_API_KEY:-}"
@@ -31,10 +30,10 @@ fail() { printf "  \033[31m✗\033[0m %s\n" "$*" >&2; exit "${2:-1}"; }
 info() { printf "\033[36m==>\033[0m %s\n" "$*"; }
 
 # ── Auto-discover URL + creds from install-result.json / .env ───────────────
-if [ -z "$BASE_URL" ] && [ -f "$MEMCLAW_HOME/install-result.json" ]; then
-  BASE_URL=$(jq -r .url "$MEMCLAW_HOME/install-result.json" 2>/dev/null || true)
-  ADMIN_EMAIL=${ADMIN_EMAIL:-$(jq -r .admin_email "$MEMCLAW_HOME/install-result.json" 2>/dev/null || true)}
-  ADMIN_API_KEY=${ADMIN_API_KEY:-$(jq -r .api_key "$MEMCLAW_HOME/install-result.json" 2>/dev/null || true)}
+if [ -z "$BASE_URL" ] && [ -f "$CAURA_HOME/install-result.json" ]; then
+  BASE_URL=$(jq -r .url "$CAURA_HOME/install-result.json" 2>/dev/null || true)
+  ADMIN_EMAIL=${ADMIN_EMAIL:-$(jq -r .admin_email "$CAURA_HOME/install-result.json" 2>/dev/null || true)}
+  ADMIN_API_KEY=${ADMIN_API_KEY:-$(jq -r .api_key "$CAURA_HOME/install-result.json" 2>/dev/null || true)}
 fi
 BASE_URL=${BASE_URL:-http://localhost}
 [ -n "$BASE_URL" ] || fail "BASE_URL not set and install-result.json not found" 1

@@ -25,8 +25,7 @@
 
 set -euo pipefail
 
-MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"  # legacy-name-floor: floor, identical to the five sibling day-2 scripts
-MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"  # legacy-name-floor: floor, and the install root default — unchanged for existing installs
 
 SUFFIX="VERSION"
 OPS_MODE="false"
@@ -40,7 +39,7 @@ die() { printf '\033[31mERROR\033[0m %s\n' "$1" >&2; exit "${2:-1}"; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --ops)    SUFFIX="OPS_VERSION"; OPS_MODE="true"; shift ;;
-    --home)   MEMCLAW_HOME="$2";    shift 2 ;;  # legacy-name-ok: the install-root variable, named as its sibling scripts name it
+    --home)   CAURA_HOME="$2";      shift 2 ;;  # legacy-name-ok: the install-root variable, named as its sibling scripts name it
     -h|--help) sed -n '2,/^$/{s/^# \{0,1\}//;p;}' "$0" | head -n 8; exit 0 ;;
     -*)       die "Unknown flag: $1" 2 ;;
     *)        [ -z "$VERSION" ] || die "Give exactly one version (got '$VERSION' and '$1')" 2
@@ -63,7 +62,7 @@ case "$VERSION" in
 esac
 [ "${#VERSION}" -le 128 ] || die "Version is longer than a tag may be (128): '$VERSION'" 2
 
-ENV_FILE="$MEMCLAW_HOME/.env"  # legacy-name-ok: the install-root variable, named as its sibling scripts name it
+ENV_FILE="$CAURA_HOME/.env"  # legacy-name-ok: the install-root variable, named as its sibling scripts name it
 [ -f "$ENV_FILE" ] || die "No .env at $ENV_FILE. Is this an install root?" 1
 
 # Both spellings of the same key. Written out in full rather than built from

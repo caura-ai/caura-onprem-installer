@@ -6,7 +6,7 @@
 # license.key into a tar.gz under $BACKUP_DIR.
 #
 # Usage:
-#   ./backup.sh               # defaults: $MEMCLAW_HOME/backups/<ts>.tar.gz
+#   ./backup.sh               # defaults: $CAURA_HOME/backups/<ts>.tar.gz
 #   ./backup.sh /some/path
 #
 # Safe to run while the stack is live — pg_dump uses a consistent snapshot.
@@ -18,16 +18,15 @@ set -euo pipefail
 # empty directory and reports success); CAURA_HOME then overrides it when set to
 # something non-empty. Blank never wins — on this script that would mean backing
 # up "/backups" instead of the customer's install.
-MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"
-MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
-BACKUP_DIR="${1:-$MEMCLAW_HOME/backups}"
+CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"  # legacy-name-floor: floor, and the install root default — unchanged for existing installs
+BACKUP_DIR="${1:-$CAURA_HOME/backups}"
 mkdir -p "$BACKUP_DIR"
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-cd "$MEMCLAW_HOME"
+cd "$CAURA_HOME"
 
 echo "==> Postgres dump"
 docker compose exec -T postgres \

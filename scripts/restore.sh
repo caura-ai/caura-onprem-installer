@@ -11,8 +11,7 @@ set -euo pipefail
 
 # The install root, under either spelling — old name first, CAURA_HOME
 # overriding only when non-empty. See scripts/backup.sh for the full note.
-MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"
-MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"  # legacy-name-floor: floor, and the install root default — unchanged for existing installs
 REPLACE_CONFIG="false"
 
 if [[ "${1:-}" == "--replace-config" ]]; then
@@ -30,7 +29,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 tar -C "$WORK" -xzf "$TARBALL"
 
-cd "$MEMCLAW_HOME"
+cd "$CAURA_HOME"
 
 echo "==> Replacing Postgres contents (pg_restore --clean --if-exists)"
 docker compose exec -T postgres \
