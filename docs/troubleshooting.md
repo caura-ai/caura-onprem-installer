@@ -167,7 +167,7 @@ usage exceeds plan limits. Upgrade your plan or delete data..."}
 2. **Org-level read-only flag set by ops** (cancellation, investigation,
    etc.). SaaS-inherited feature; on-prem rarely hits this.
 
-## Frontend shows the wrong URL (memclaw.net instead of customer hostname)
+## Frontend shows the wrong URL (caura.ai instead of customer hostname)
 
 **Root cause**: the app-frontend image was built with a baked
 `NEXT_PUBLIC_SITE_URL` that doesn't match your customer domain, OR the
@@ -184,7 +184,7 @@ curl -s http://caura.acme.com/env-config.js
 # → };
 ```
 
-If the response looks hardcoded (still says "memclaw.net"), check
+If the response looks hardcoded (still says "caura.ai"), check
 docker-compose.yml sets `MEMCLAW_API_URL` / `MEMCLAW_SITE_URL` / 
 `MEMCLAW_BILLING_ENABLED` on the `app-frontend` service and restart:
 
@@ -192,12 +192,15 @@ docker-compose.yml sets `MEMCLAW_API_URL` / `MEMCLAW_SITE_URL` /
 docker compose restart app-frontend
 ```
 
-> **These three keep the old spelling on purpose.** Every other setting in this
-> installer also answers to a `CAURA_*` name ([`env-aliases.md`](env-aliases.md)),
-> but these are read *inside* the application image, which is built in another
-> repo and ships on a tag customers have already pulled. A `CAURA_*` spelling
-> here would name something no released image reads, so the frontend would come
-> back up with no config at all. Do not "finish" the rename on these — they move
+> **These three, and the `window.__MEMCLAW_CONFIG__` global in the output above,  <!-- legacy-name-floor: names the global the shipped image defines -->
+> keep the old spelling on purpose.** Every other setting in this installer also
+> answers to a `CAURA_*` name ([`env-aliases.md`](env-aliases.md)), but these are
+> read *inside* the application image, which is built in another repo and ships
+> on a tag customers have already pulled. A `CAURA_*` spelling here would name
+> something no released image reads, so the frontend would come back up with no
+> config at all. The global is the same case seen from the other side: it is what
+> the image WRITES, so a doc that renamed it would send an operator looking for a
+> key the shim never emits. Do not "finish" the rename on any of them — they move
 > when the application image moves.
 
 ## Phone-home heartbeats never reach ops.caura.ai
