@@ -56,7 +56,7 @@ services:
     logging: *default-logging
 
   platform-storage-api:
-    image: "ghcr.io/caura-ai/memclaw-platform-storage:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+    image: "ghcr.io/caura-ai/caura-onprem-platform-storage:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     restart: unless-stopped
     environment:
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-memclaw}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-memclaw}"
@@ -77,7 +77,7 @@ services:
     logging: *default-logging
 
   platform-auth-api:
-    image: "ghcr.io/caura-ai/memclaw-platform-auth:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+    image: "ghcr.io/caura-ai/caura-onprem-platform-auth:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     restart: unless-stopped
     environment:
       PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
@@ -115,7 +115,7 @@ services:
     logging: *default-logging
 
   platform-admin-api:
-    image: "ghcr.io/caura-ai/memclaw-platform-admin:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+    image: "ghcr.io/caura-ai/caura-onprem-platform-admin:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     restart: unless-stopped
     environment:
       PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
@@ -157,7 +157,7 @@ services:
     logging: *default-logging
 
   platform-audit-api:
-    image: "ghcr.io/caura-ai/memclaw-platform-audit:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+    image: "ghcr.io/caura-ai/caura-onprem-platform-audit:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     restart: unless-stopped
     environment:
       PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
@@ -180,7 +180,7 @@ services:
   # is needed here — core-worker is the SaaS/pubsub offload. Uses the existing
   # CORE_ADMIN_API_KEY (no new secret). In-process scheduler -> single-replica.
   core-operations:
-    image: "ghcr.io/caura-ai/memclaw-core-operations:${CAURA_OPS_VERSION:-${MEMCLAW_OPS_VERSION:-${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+    image: "ghcr.io/caura-ai/caura-onprem-core-operations:${CAURA_OPS_VERSION:-${MEMCLAW_OPS_VERSION:-${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     restart: unless-stopped
     environment:
       ENVIRONMENT: production
@@ -218,7 +218,7 @@ services:
     logging: *default-logging
 
   core-storage-api:
-    image: "ghcr.io/caura-ai/memclaw-core-storage:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+    image: "ghcr.io/caura-ai/caura-onprem-core-storage:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     restart: unless-stopped
     environment:
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-memclaw}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-memclaw}"
@@ -249,7 +249,7 @@ services:
     logging: *default-logging
 
   core-api:
-    image: "ghcr.io/caura-ai/memclaw-core-api:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+    image: "ghcr.io/caura-ai/caura-onprem-core-api:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     restart: unless-stopped
     environment:
       ENVIRONMENT: production
@@ -309,7 +309,7 @@ services:
     logging: *default-logging
 
   app-frontend:
-    image: "ghcr.io/caura-ai/memclaw-app:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+    image: "ghcr.io/caura-ai/caura-onprem-app:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     restart: unless-stopped
     environment:
       # Runtime-config shim (Phase 3b): the frontend fetches /env-config.js

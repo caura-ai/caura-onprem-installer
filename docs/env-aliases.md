@@ -118,16 +118,23 @@ them by hand — see `docs/troubleshooting.md`.
 
 ## The registry image names do move
 
-The nine `ghcr.io/caura-ai/memclaw-*` images in `docker-compose.yml` and  <!-- legacy-name-floor: names the GHCR packages that are retained after the move -->
-`docker-compose.embedder.yml` are the one brand surface here that is **not**
-frozen. New versions publish under `ghcr.io/caura-ai/caura-*`. GHCR has no
-rename, so the old packages are retained indefinitely rather than redirected.
+The nine images in `docker-compose.yml` and `docker-compose.embedder.yml` are
+the one brand surface here that is **not** frozen, and they have moved: both
+files now pull `ghcr.io/caura-ai/caura-onprem-*`.
 
-Nothing is asked of an operator either way. A connected upgrade re-fetches the
-bundle and extracts it over the install (`upgrade.sh:291-292`), which replaces
-`docker-compose.yml` — so it picks up the new names by itself. An install that
-never upgrades keeps pulling the name already in its compose file, which is
-exactly why the old packages stay.
+The release workflow dual-pushes every image under both prefixes to the same
+digest, so the two names are the same bytes — but only from **v2.11.18**, the
+first version published that way. Earlier versions exist under `memclaw-*`  <!-- legacy-name-floor: names the GHCR packages retained for installs pinned before the dual-push -->
+only, which is why those packages are retained rather than deleted, and why
+the shipped default moved to v2.11.19 in the same change that repointed the
+compose files: a default of v2.8.4 against the new names would resolve to a
+tag that was never published.
+
+Nothing is asked of an operator. A connected upgrade re-fetches the bundle and
+extracts it over the install (the `Refresh bundle` step in `upgrade.sh`), which replaces
+`docker-compose.yml`, so it picks up the new names by itself. An install that
+stays on a version below v2.11.18 keeps the compose file it already holds, and
+that file names the old packages — which is exactly why they stay.
 
 **They are deliberately absent from the list below.** That list is names that
 *cannot* move; these can, and the distinction is the whole difference between

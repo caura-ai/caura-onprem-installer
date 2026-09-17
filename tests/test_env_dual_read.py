@@ -1491,7 +1491,7 @@ def test_the_shipped_default_still_lands_when_nothing_sets_the_key(tmp_path, key
     """Deferring the defaults must not have dropped them."""
     expected = {
         "CAURA_HOME": "/opt/memclaw",  # legacy-name-floor: the floor install path
-        "CAURA_VERSION": "v2.8.4",
+        "CAURA_VERSION": "v2.11.19",
         "EMAIL_PROVIDER": "log",
         "EMBEDDING_PROVIDER": "local",
         "OFFLINE": "false",
@@ -1501,6 +1501,71 @@ def test_the_shipped_default_still_lands_when_nothing_sets_the_key(tmp_path, key
         "CORE_ADMIN_API_KEY_FILE": "",
     }[var]
     assert _resolve(tmp_path, "hostname = \"x\"\n", var) == expected
+
+
+# v2.11.18 is the first on-prem release the enterprise workflow dual-pushed under
+# both image prefixes (release-onprem.yml: IMAGE_PREFIX + LEGACY_IMAGE_PREFIX, one
+# digest). Anything older exists under the old prefix ONLY.
+FIRST_DUAL_PUSHED_VERSION = (2, 11, 18)
+
+
+def _semver(tag):
+    return tuple(int(x) for x in tag.lstrip("v").split("."))
+
+
+def test_the_shipped_default_exists_under_the_prefix_compose_pulls():
+    """The default version and the image prefix have to move together.
+
+    These are two unrelated-looking lines in two different files, and getting
+    them out of step is silent: compose resolves a tag that was never published
+    and the pull 404s at install time, not here. The shipped default was v2.8.4
+    while the compose files named the new prefix for exactly as long as it took
+    to notice.
+    """
+    compose = (REPO_ROOT / "docker-compose.yml").read_text()
+    default = re.search(r'CAURA_VERSION="\$\{CAURA_VERSION:-(v[0-9.]+)\}"',
+                        (REPO_ROOT / "install.sh").read_text())
+    assert default, "install.sh no longer states a default version in the expected shape"
+
+    if "ghcr.io/caura-ai/caura-onprem-" in compose:
+        assert _semver(default.group(1)) >= FIRST_DUAL_PUSHED_VERSION, (
+            f"compose pulls caura-onprem-*, but the shipped default "
+            f"{default.group(1)} predates v2.11.18 — that tag was never "
+            f"published under this prefix and the pull will 404"
+        )
+
+
+def test_rollback_restores_the_compose_it_was_running():
+    """Rollback must not run the OLD tag against the NEW compose file.
+
+    upgrade.sh extracts the new bundle over the install before it pulls, so by
+    the time _rollback runs, docker-compose.yml is the new version's copy. It
+    then pins CAURA_VERSION back to FROM_VERSION and calls `up -d`. That is only
+    safe while both versions name the same images — and they do not: the
+    registry prefix moved to caura-onprem- at v2.11.18, so a rollback to
+    anything older resolves a tag that was never published under that prefix.
+
+    Both orderings matter and neither is visible at runtime until an upgrade
+    fails, which is the worst moment to find out.
+    """
+    up = (REPO_ROOT / "upgrade.sh").read_text()
+
+    snapshot = up.index('COMPOSE_SNAPSHOT=".compose-pre-upgrade"')
+    extract = up.index("tar -xz -C .")
+    assert snapshot < extract, (
+        "the compose snapshot is taken AFTER the bundle extract, so it captures "
+        "the new files rather than the ones being replaced"
+    )
+
+    body = up[up.index("_rollback() {"):]
+    body = body[: body.index("\n}\n")]
+    assert "$COMPOSE_SNAPSHOT" in body, "_rollback never restores the snapshot"
+    # the literal command, not the "up -d" in the function's own header comment
+    run_up = body.index('docker compose "${COMPOSE_FILES[@]}" up -d')
+    assert body.index("$COMPOSE_SNAPSHOT") < run_up, (
+        "_rollback runs `up -d` before restoring the old compose files, so the "
+        "old version tag is resolved against the new file's image names"
+    )
 
 
 def test_every_config_arm_is_guarded():

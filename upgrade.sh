@@ -293,6 +293,25 @@ fi
 # Remember where to roll back to.
 echo "$FROM_VERSION" > .memclaw-prev-version
 
+# Snapshot the compose files before the bundle replaces them.
+#
+# _rollback re-runs `up -d` pinned at FROM_VERSION, but by then the refresh has
+# already overwritten docker-compose.yml with the NEW version's copy — so the old
+# tag gets resolved against whatever images the new compose names. That is fine
+# only while both versions name the same images, and they no longer do: the
+# registry prefix moved to caura-onprem- at v2.11.18, and earlier tags exist
+# under the old prefix only. Without this, rolling back to anything older
+# resolves an image:tag pair that was never published, `up -d` fails, and the
+# stack is left down on the manual-recovery path.
+COMPOSE_SNAPSHOT=".compose-pre-upgrade"
+rm -rf "$COMPOSE_SNAPSHOT"
+mkdir -p "$COMPOSE_SNAPSHOT"
+for _cf in docker-compose*.yml; do
+  [ -e "$_cf" ] && cp -p "$_cf" "$COMPOSE_SNAPSHOT/"
+done
+# Kept after a SUCCESSFUL upgrade too, deliberately: it is the only copy of what
+# the previous version was running, and an operator recovering by hand needs it.
+
 # ── Refresh bundle + update .env ────────────────────────────────────────────
 log "Refreshing bundle (compose / nginx / scripts) from $BUNDLE_URL"
 if ! curl -fsSL "$BUNDLE_URL" | tar -xz -C . ; then
@@ -349,6 +368,11 @@ _rollback() {
   warn "Rolling back to $FROM_VERSION (cause: $why)"
   _rewrite_env_key MEMCLAW_VERSION "$FROM_VERSION" || true  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   _rewrite_env_key CAURA_VERSION "$FROM_VERSION" || true
+  # Put back the compose files FROM_VERSION was actually running with. Must come
+  # before `up -d`, or the old tag is resolved against the new file's images.
+  if [ -d "${COMPOSE_SNAPSHOT:-}" ]; then
+    cp -p "$COMPOSE_SNAPSHOT"/*.yml . 2>/dev/null || true
+  fi
   if ! docker compose "${COMPOSE_FILES[@]}" up -d; then
     warn "compose up -d during rollback ALSO failed — manual recovery needed."
     warn "Backup (if taken): $CAURA_HOME/$BACKUP_PATH"

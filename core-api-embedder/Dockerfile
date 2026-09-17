@@ -1,7 +1,7 @@
 # On-prem core-api image variant with sentence-transformers + BGE pre-loaded.
 #
 # Why a separate image:
-#   - The base ghcr.io/caura-ai/memclaw-core-api image is slim (≈750MB)
+#   - The base ghcr.io/caura-ai/caura-onprem-core-api image is slim (≈750MB)
 #     because SaaS customers almost always set OPENAI_API_KEY or
 #     PLATFORM_EMBEDDING_API_KEY and never hit the LocalEmbedding path.
 #   - On-prem + air-gapped customers have no API key and no internet, so
@@ -22,7 +22,7 @@
 #
 # Wire up via docker-compose.embedder.yml overlay — see the bundle README.
 
-ARG BASE_IMAGE=ghcr.io/caura-ai/memclaw-core-api:latest
+ARG BASE_IMAGE=ghcr.io/caura-ai/caura-onprem-core-api:latest
 FROM ${BASE_IMAGE}
 
 USER root
