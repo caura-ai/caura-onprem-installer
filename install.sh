@@ -276,7 +276,7 @@ fi
 # pattern applied to the rest.
 _EMBEDDING_PROVIDER_CHOSEN="$EMBEDDING_PROVIDER"   # before the default lands
 CAURA_HOME="${CAURA_HOME:-/opt/memclaw}"  # legacy-name-floor: floor, and the install root default
-CAURA_VERSION="${CAURA_VERSION:-v2.8.4}"
+CAURA_VERSION="${CAURA_VERSION:-v2.11.19}"
 OFFLINE="${OFFLINE:-false}"
 SKIP_ADMIN="${SKIP_ADMIN:-false}"
 EMAIL_PROVIDER="${EMAIL_PROVIDER:-log}"
@@ -780,7 +780,7 @@ else
     [ -f docker-compose.embedder.yml ] || die "local embeddings: docker-compose.embedder.yml missing" 3
     COMPOSE_FILES+=(-f docker-compose.embedder.yml)
   fi
-  log "Pulling images (ghcr.io/caura-ai/*:${MEMCLAW_VERSION})"
+  log "Pulling images (ghcr.io/caura-ai/caura-onprem-*:${CAURA_VERSION})"
   # --ignore-buildable skips services with a `build:` section (gateway is
   # built locally from ./nginx/). Available in compose v2.22+ — ships with
   # Docker 24+ which we already require. Fall back without the flag on
