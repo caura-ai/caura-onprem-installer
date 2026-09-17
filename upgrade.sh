@@ -12,9 +12,9 @@
 #   2. Resolve target version (from --to, or the ghcr `:latest` tag's digest
 #      resolved to its semver tag).
 #   3. Dry-run summary — from → to, images that will pull, backup plan.
-#   4. DB snapshot to $MEMCLAW_HOME/backups/pre-upgrade-<from>-to-<to>-<ts>.pgbin
+#   4. DB snapshot to $CAURA_HOME/backups/pre-upgrade-<from>-to-<to>-<ts>.pgbin
 #      (pg_dump -Fc). Skip with --no-backup.
-#   5. Record prev version to $MEMCLAW_HOME/.memclaw-prev-version so a later
+#   5. Record prev version to $CAURA_HOME/.memclaw-prev-version so a later  # legacy-name-floor: the file written on existing installs; the name is on their disks
 #      rollback is a single CLI command: it reads that marker and re-enters
 #      this script with --to <prev>. There is no separate rollback script.
 #   6. Refresh bundle.tar.gz so compose / nginx / scripts stay aligned.
@@ -80,8 +80,7 @@ fi
 # CAURA_* twin when that one is NON-EMPTY. First non-empty, never first defined
 # — see the same block in install.sh for why blank has to mean absent on a
 # hand-edited file.
-MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"
-MEMCLAW_HOME="${CAURA_HOME:-$MEMCLAW_HOME}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"  # legacy-name-floor: floor, and the install root default — unchanged for existing installs
 TARGET_VERSION=""                  # --to, or auto-resolved from :latest
 DRY_RUN="false"
 SKIP_BACKUP="false"
@@ -126,7 +125,7 @@ resolve_target_version() {
 # caller can use it under `set -euo pipefail` — same contract as _GET below,
 # which this predates in the file only because current_version() needs it here.
 _env_key() {
-  local _envfile="$MEMCLAW_HOME/.env"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
+  local _envfile="$CAURA_HOME/.env"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   grep -E "^$1=" "$_envfile" 2>/dev/null \
     | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true
 }
@@ -155,7 +154,7 @@ while [ $# -gt 0 ]; do
     --dry-run)    DRY_RUN="true";            shift   ;;
     --no-backup)  SKIP_BACKUP="true";        shift   ;;
     -y|--yes)     ASSUME_YES="true";         shift   ;;
-    --memclaw-home) MEMCLAW_HOME="$2";       shift 2 ;;
+    --memclaw-home) CAURA_HOME="$2";         shift 2 ;;  # legacy-name-ok: the flag operators already have in their scripts; rule 3 keeps it working
     --health-timeout) HEALTH_TIMEOUT_S="$2"; shift 2 ;;
     --bundle-url) BUNDLE_URL="$2";           shift 2 ;;
     -h|--help)
@@ -168,9 +167,9 @@ done
 # ── Preflight ───────────────────────────────────────────────────────────────
 log "Preflight checks"
 
-[ -d "$MEMCLAW_HOME" ] || die "No install found at $MEMCLAW_HOME. Run install.sh first." 1
-[ -f "$MEMCLAW_HOME/docker-compose.yml" ] || die "$MEMCLAW_HOME/docker-compose.yml missing" 1
-[ -f "$MEMCLAW_HOME/.env" ] || die "$MEMCLAW_HOME/.env missing" 1
+[ -d "$CAURA_HOME" ] || die "No install found at $CAURA_HOME. Run install.sh first." 1
+[ -f "$CAURA_HOME/docker-compose.yml" ] || die "$CAURA_HOME/docker-compose.yml missing" 1
+[ -f "$CAURA_HOME/.env" ] || die "$CAURA_HOME/.env missing" 1
 
 command -v docker >/dev/null || die "Docker ≥ 24 required" 1
 docker info >/dev/null 2>&1 || {
@@ -184,7 +183,7 @@ docker compose version >/dev/null 2>&1 || die "docker compose v2 required" 1
 
 # Resolve current + target
 FROM_VERSION=$(current_version)
-[ -n "$FROM_VERSION" ] || die "MEMCLAW_VERSION not set in $MEMCLAW_HOME/.env — nothing to upgrade from." 1
+[ -n "$FROM_VERSION" ] || die "MEMCLAW_VERSION not set in $CAURA_HOME/.env — nothing to upgrade from." 1  # legacy-name-floor: names the key as it is written in existing .env files
 TO_VERSION=$(resolve_target_version)
 
 if [ "$FROM_VERSION" = "$TO_VERSION" ]; then
@@ -193,9 +192,9 @@ if [ "$FROM_VERSION" = "$TO_VERSION" ]; then
 fi
 
 # Rough disk check — pg_dump + new images easily eat 10 GB.
-DISK_GB=$(df -BG "$MEMCLAW_HOME" | awk 'NR==2 {sub("G","",$4); print $4}')
+DISK_GB=$(df -BG "$CAURA_HOME" | awk 'NR==2 {sub("G","",$4); print $4}')
 [ "${DISK_GB:-0}" -ge 5 ] \
-  || die "Only ${DISK_GB}G free at $MEMCLAW_HOME — need at least 5G for backup + new images." 1
+  || die "Only ${DISK_GB}G free at $CAURA_HOME — need at least 5G for backup + new images." 1
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 cat <<EOF
@@ -203,7 +202,7 @@ cat <<EOF
 ──────────────────────────────────────────
   Caura upgrade plan
 ──────────────────────────────────────────
-  home:         $MEMCLAW_HOME
+  home:         $CAURA_HOME
   from:         $FROM_VERSION
   to:           $TO_VERSION
   bundle:       $BUNDLE_URL
@@ -229,7 +228,7 @@ elif [ "$ASSUME_YES" != "true" ]; then
   warn "Non-interactive shell and --yes not set — proceeding anyway (curl|bash pipelines are stdin-less)."
 fi
 
-cd "$MEMCLAW_HOME"
+cd "$CAURA_HOME"
 
 # Reconstruct the same -f overlays install.sh chose, so upgrade preserves
 # the customer's TLS / embedder / airgap selections instead of silently
@@ -352,11 +351,11 @@ _rollback() {
   _rewrite_env_key CAURA_VERSION "$FROM_VERSION" || true
   if ! docker compose "${COMPOSE_FILES[@]}" up -d; then
     warn "compose up -d during rollback ALSO failed — manual recovery needed."
-    warn "Backup (if taken): $MEMCLAW_HOME/$BACKUP_PATH"
+    warn "Backup (if taken): $CAURA_HOME/$BACKUP_PATH"
     exit 5
   fi
   if [ -n "$BACKUP_PATH" ]; then
-    warn "DB schema unchanged (we didn't run migrations yet). Backup kept for safety at $MEMCLAW_HOME/$BACKUP_PATH"
+    warn "DB schema unchanged (we didn't run migrations yet). Backup kept for safety at $CAURA_HOME/$BACKUP_PATH"
   fi
   exit 4
 }
@@ -513,10 +512,10 @@ fi
 # directory usually exists too. The path is single-quoted in the printed string
 # so a root containing a space survives being pasted rather than splitting into
 # a shorter valid path.
-if [ -r "$MEMCLAW_HOME/upgrade.sh" ]; then  # legacy-name-ok: the install-root variable, named as its sibling scripts name it
-  ROLLBACK_HINT="sudo bash '$MEMCLAW_HOME/upgrade.sh' --to $FROM_VERSION --memclaw-home '$MEMCLAW_HOME'"  # legacy-name-ok: the install-root flag and variable, named as this script names them
+if [ -r "$CAURA_HOME/upgrade.sh" ]; then  # legacy-name-ok: the install-root variable, named as its sibling scripts name it
+  ROLLBACK_HINT="sudo bash '$CAURA_HOME/upgrade.sh' --to $FROM_VERSION --memclaw-home '$CAURA_HOME'"  # legacy-name-ok: the install-root flag and variable, named as this script names them
 else
-  ROLLBACK_HINT="curl -fsSL $UPGRADE_URL | sudo bash -s -- --to $FROM_VERSION --memclaw-home '$MEMCLAW_HOME'"  # legacy-name-ok: the install-root flag and variable, named as this script names them
+  ROLLBACK_HINT="curl -fsSL $UPGRADE_URL | sudo bash -s -- --to $FROM_VERSION --memclaw-home '$CAURA_HOME'"  # legacy-name-ok: the install-root flag and variable, named as this script names them
 fi
 ROLLBACK_ALT="or 'memclawctl rollback', if the operator CLI is installed"  # legacy-name-floor: the shipped CLI's own command; an install whose CLI predates the alias has only this spelling
 cat <<EOF

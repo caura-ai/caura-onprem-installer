@@ -209,37 +209,37 @@ SENTINELS: tuple[Sentinel, ...] = (
     # the variable. Same partial-application shape as the Postgres defaults.
     Sentinel(
         path="install.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
+        text='CAURA_HOME="${CAURA_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="a re-run installs a second copy beside the customer's existing stack",
     ),
     Sentinel(
         path="upgrade.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
+        text='CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="upgrade cannot find the install it is upgrading",
     ),
     Sentinel(
         path="scripts/backup.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
+        text='CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="backups run against an empty directory and report success",
     ),
     Sentinel(
         path="scripts/restore.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
+        text='CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="a restore unpacks into the wrong directory and the stack never sees it",
     ),
     Sentinel(
         path="scripts/verify/smoke-onprem.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
+        text='CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="the smoke check reports a healthy install as missing",
     ),
     Sentinel(
         path="scripts/set-version.sh",
-        text='MEMCLAW_HOME="${MEMCLAW_HOME:-/opt/memclaw}"',  # legacy-name-floor: floor
+        text='CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"',  # legacy-name-floor: floor
         kind=LITERAL,
         breaks="a version bump edits an .env in an empty directory and reports success",
     ),
