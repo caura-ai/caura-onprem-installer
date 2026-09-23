@@ -84,10 +84,10 @@ CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-/opt/memclaw}}"  # legacy-name-floor: 
 TARGET_VERSION=""                  # --to, or auto-resolved from :latest
 DRY_RUN="false"
 SKIP_BACKUP="false"
-ASSUME_YES="${MEMCLAW_YES:-false}"  # -y / --yes, or MEMCLAW_YES=1
+ASSUME_YES="${MEMCLAW_YES:-false}"  # -y / --yes, or MEMCLAW_YES=1  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 ASSUME_YES="${CAURA_YES:-$ASSUME_YES}"
 HEALTH_TIMEOUT_S=180
-BUNDLE_URL="${MEMCLAW_BUNDLE_URL:-https://onprem.caura.ai/bundle.tar.gz}"
+BUNDLE_URL="${MEMCLAW_BUNDLE_URL:-https://onprem.caura.ai/bundle.tar.gz}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 BUNDLE_URL="${CAURA_BUNDLE_URL:-$BUNDLE_URL}"
 
 # Services we expect to find running and re-verify post-upgrade.
