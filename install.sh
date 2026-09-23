@@ -50,41 +50,41 @@ OFFLINE="${CAURA_OFFLINE:-$OFFLINE}"
 SKIP_ADMIN="${MEMCLAW_SKIP_ADMIN:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 SKIP_ADMIN="${CAURA_SKIP_ADMIN:-$SKIP_ADMIN}"
 
-HOSTNAME="${MEMCLAW_HOSTNAME:-}"
+HOSTNAME="${MEMCLAW_HOSTNAME:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 HOSTNAME="${CAURA_HOSTNAME:-$HOSTNAME}"
-ADMIN_EMAIL="${MEMCLAW_ADMIN_EMAIL:-}"
+ADMIN_EMAIL="${MEMCLAW_ADMIN_EMAIL:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 ADMIN_EMAIL="${CAURA_ADMIN_EMAIL:-$ADMIN_EMAIL}"
-ADMIN_PASSWORD="${MEMCLAW_ADMIN_PASSWORD:-}"
+ADMIN_PASSWORD="${MEMCLAW_ADMIN_PASSWORD:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 ADMIN_PASSWORD="${CAURA_ADMIN_PASSWORD:-$ADMIN_PASSWORD}"
-ADMIN_PASSWORD_FILE="${MEMCLAW_ADMIN_PASSWORD_FILE:-}"
+ADMIN_PASSWORD_FILE="${MEMCLAW_ADMIN_PASSWORD_FILE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 ADMIN_PASSWORD_FILE="${CAURA_ADMIN_PASSWORD_FILE:-$ADMIN_PASSWORD_FILE}"
-LICENSE_PATH="${MEMCLAW_LICENSE:-}"
+LICENSE_PATH="${MEMCLAW_LICENSE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 LICENSE_PATH="${CAURA_LICENSE:-$LICENSE_PATH}"
-LICENSE_URL="${MEMCLAW_LICENSE_URL:-}"
+LICENSE_URL="${MEMCLAW_LICENSE_URL:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 LICENSE_URL="${CAURA_LICENSE_URL:-$LICENSE_URL}"
-JWT_SECRET_FILE="${MEMCLAW_JWT_SECRET_FILE:-}"
+JWT_SECRET_FILE="${MEMCLAW_JWT_SECRET_FILE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 JWT_SECRET_FILE="${CAURA_JWT_SECRET_FILE:-$JWT_SECRET_FILE}"
-POSTGRES_PASSWORD_FILE="${MEMCLAW_POSTGRES_PASSWORD_FILE:-}"
+POSTGRES_PASSWORD_FILE="${MEMCLAW_POSTGRES_PASSWORD_FILE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 POSTGRES_PASSWORD_FILE="${CAURA_POSTGRES_PASSWORD_FILE:-$POSTGRES_PASSWORD_FILE}"
-CORE_ADMIN_API_KEY_FILE="${MEMCLAW_CORE_ADMIN_API_KEY_FILE:-}"
+CORE_ADMIN_API_KEY_FILE="${MEMCLAW_CORE_ADMIN_API_KEY_FILE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 CORE_ADMIN_API_KEY_FILE="${CAURA_CORE_ADMIN_API_KEY_FILE:-$CORE_ADMIN_API_KEY_FILE}"
-OPENAI_API_KEY_FILE="${MEMCLAW_OPENAI_API_KEY_FILE:-}"
+OPENAI_API_KEY_FILE="${MEMCLAW_OPENAI_API_KEY_FILE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 OPENAI_API_KEY_FILE="${CAURA_OPENAI_API_KEY_FILE:-$OPENAI_API_KEY_FILE}"
 # External Postgres (blank = use the bundled `postgres` service). Set these
 # to point at a managed/external instance (RDS, Cloud SQL, AlloyDB, etc.).
 # The external DB must have the pgvector extension available + a user with
 # CREATE privileges. See docs/database.md.
-POSTGRES_HOST="${MEMCLAW_POSTGRES_HOST:-}"
+POSTGRES_HOST="${MEMCLAW_POSTGRES_HOST:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 POSTGRES_HOST="${CAURA_POSTGRES_HOST:-$POSTGRES_HOST}"
-POSTGRES_PORT="${MEMCLAW_POSTGRES_PORT:-}"
+POSTGRES_PORT="${MEMCLAW_POSTGRES_PORT:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 POSTGRES_PORT="${CAURA_POSTGRES_PORT:-$POSTGRES_PORT}"
-POSTGRES_USER="${MEMCLAW_POSTGRES_USER:-}"
+POSTGRES_USER="${MEMCLAW_POSTGRES_USER:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 POSTGRES_USER="${CAURA_POSTGRES_USER:-$POSTGRES_USER}"
-POSTGRES_DB="${MEMCLAW_POSTGRES_DB:-}"
+POSTGRES_DB="${MEMCLAW_POSTGRES_DB:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 POSTGRES_DB="${CAURA_POSTGRES_DB:-$POSTGRES_DB}"
-POSTGRES_REQUIRE_SSL="${MEMCLAW_POSTGRES_REQUIRE_SSL:-}"
+POSTGRES_REQUIRE_SSL="${MEMCLAW_POSTGRES_REQUIRE_SSL:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 POSTGRES_REQUIRE_SSL="${CAURA_POSTGRES_REQUIRE_SSL:-$POSTGRES_REQUIRE_SSL}"
-LLM_PROVIDER="${MEMCLAW_LLM_PROVIDER:-}"
+LLM_PROVIDER="${MEMCLAW_LLM_PROVIDER:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 LLM_PROVIDER="${CAURA_LLM_PROVIDER:-$LLM_PROVIDER}"
 EMAIL_PROVIDER="${MEMCLAW_EMAIL_PROVIDER:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 EMAIL_PROVIDER="${CAURA_EMAIL_PROVIDER:-$EMAIL_PROVIDER}"
@@ -101,19 +101,19 @@ CAURA_VERSION="${CAURA_VERSION:-${MEMCLAW_VERSION:-}}"  # legacy-name-ok: dual-r
 #       must be reachable from the internet for HTTP-01 challenge.
 #   "" (empty) — HTTP-only. Only reachable by passing
 #       --acknowledge-insecure; install.sh refuses otherwise.
-TLS_MODE="${MEMCLAW_TLS_MODE:-self-signed}"
+TLS_MODE="${MEMCLAW_TLS_MODE:-self-signed}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 TLS_MODE="${CAURA_TLS_MODE:-$TLS_MODE}"
-TLS_CERT_FILE="${MEMCLAW_TLS_CERT_FILE:-}"
+TLS_CERT_FILE="${MEMCLAW_TLS_CERT_FILE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 TLS_CERT_FILE="${CAURA_TLS_CERT_FILE:-$TLS_CERT_FILE}"
-TLS_KEY_FILE="${MEMCLAW_TLS_KEY_FILE:-}"
+TLS_KEY_FILE="${MEMCLAW_TLS_KEY_FILE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 TLS_KEY_FILE="${CAURA_TLS_KEY_FILE:-$TLS_KEY_FILE}"
-TLS_DOMAIN="${MEMCLAW_TLS_DOMAIN:-}"
+TLS_DOMAIN="${MEMCLAW_TLS_DOMAIN:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 TLS_DOMAIN="${CAURA_TLS_DOMAIN:-$TLS_DOMAIN}"
-TLS_EMAIL="${MEMCLAW_TLS_EMAIL:-}"
+TLS_EMAIL="${MEMCLAW_TLS_EMAIL:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 TLS_EMAIL="${CAURA_TLS_EMAIL:-$TLS_EMAIL}"
-ACK_INSECURE="${MEMCLAW_ACK_INSECURE:-false}"
+ACK_INSECURE="${MEMCLAW_ACK_INSECURE:-false}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 ACK_INSECURE="${CAURA_ACK_INSECURE:-$ACK_INSECURE}"
-BIND_ADDRESS="${MEMCLAW_BIND_ADDRESS:-0.0.0.0}"
+BIND_ADDRESS="${MEMCLAW_BIND_ADDRESS:-0.0.0.0}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 BIND_ADDRESS="${CAURA_BIND_ADDRESS:-$BIND_ADDRESS}"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -481,7 +481,7 @@ elif [ -f "$0" ] && [ -r "$0" ]; then
 fi
 
 if [ -z "$SRC_DIR" ]; then
-  BUNDLE_URL="${MEMCLAW_BUNDLE_URL:-https://onprem.caura.ai/bundle.tar.gz}"
+  BUNDLE_URL="${MEMCLAW_BUNDLE_URL:-https://onprem.caura.ai/bundle.tar.gz}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   BUNDLE_URL="${CAURA_BUNDLE_URL:-$BUNDLE_URL}"
   log "No adjacent bundle found; fetching $BUNDLE_URL"
   SRC_DIR=$(mktemp -d)
@@ -735,7 +735,7 @@ EOF
 # Decide whether to engage local embeddings. Auto-opt-in when the customer
 # has neither an LLM key nor a PLATFORM_EMBEDDING_* override — otherwise
 # the slim core-api image 503s on every recall.
-LOCAL_EMBEDDINGS="${MEMCLAW_LOCAL_EMBEDDINGS:-}"
+LOCAL_EMBEDDINGS="${MEMCLAW_LOCAL_EMBEDDINGS:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 LOCAL_EMBEDDINGS="${CAURA_LOCAL_EMBEDDINGS:-$LOCAL_EMBEDDINGS}"
 if [ -z "$LOCAL_EMBEDDINGS" ]; then
   if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${PLATFORM_EMBEDDING_API_KEY:-}" ] \
