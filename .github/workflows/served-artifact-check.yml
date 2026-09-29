@@ -28,9 +28,9 @@ name: Served-artifact check
 
 on:
   schedule:
-    # 06:17 UTC. Off the hour on purpose — scheduled runs at :00 queue behind
+    # 06:18 UTC. Off the hour on purpose — scheduled runs at :00 queue behind
     # everyone else's cron on shared runners.
-    - cron: '17 6 * * *'
+    - cron: '18 6 * * *'
   workflow_dispatch:
 
 permissions:
