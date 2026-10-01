@@ -103,6 +103,20 @@ curl -s -X POST http://caura.acme.com/api/memories \
 docker compose ps
 ```
 
+## Pending registration keys and fleet tokens
+
+Current releases redeem registration keys only as `cark_…` and fleet join
+tokens only as `caft_…`. Releases cut before mid-September 2026 issued them as
+`mcrk_…` and `mcft_…`. If you upgrade from one of those, a key or token you
+handed out that hasn't been used yet is refused:
+
+- `caura init --registration-key=mcrk_…` fails with `registration_key_invalid`.
+- `caura join-fleet mcft_…` fails with `token_not_found`.
+
+Issue a new one after upgrading, the same way you issued the first. Both are
+one-shot, so installs that already registered or joined a fleet are
+unaffected.
+
 ## Rollback (connected)
 
 A rollback is an upgrade toward the older tag, so on a connected install it
