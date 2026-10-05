@@ -111,7 +111,10 @@ def status(ctx: click.Context) -> None:
     is_flag=True,
     help="Read password from stdin (safer than --password).",
 )
-@click.option("--password")
+@click.option(
+    "--password",
+    help="12+ characters with an uppercase letter and a digit; prefer --password-stdin.",
+)
 @click.option("--org-name", required=True)
 @click.pass_context
 def setup(
@@ -132,7 +135,12 @@ def setup(
         resp = _post(
             c,
             "/api/setup/admin",
-            {"email": email, "password": pw, "org_name": org_name},
+            {
+                "email": email,
+                "password": pw,
+                "org_name": org_name,
+                "license_key": key,
+            },
         )
     console.print(
         f"[green]Setup complete.[/green] API key:\n  [bold]{resp['api_key']}[/bold]"

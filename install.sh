@@ -128,6 +128,61 @@ die()   { printf '\033[31mERROR\033[0m %s\n' "$1" >&2; exit "${2:-1}"; }
 read_file() { [ -n "${1:-}" ] && [ -f "$1" ] && cat "$1"; }
 random_hex() { head -c "$1" /dev/urandom | xxd -p -c "$1"; }
 
+# JSON strings for the setup body, without adding a host-side jq dependency.
+# Escape every ASCII control byte (Bash strings cannot contain NUL), as well as
+# quotes and backslashes, so password-file contents cannot alter the request.
+json_string() {
+  local value="$1" code char escaped
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  for ((code=1; code<32; code++)); do
+    printf -v char '\\%03o' "$code"
+    printf -v char '%b' "$char"
+    printf -v escaped '\\u%04x' "$code"
+    value="${value//"$char"/"$escaped"}"
+  done
+  printf '"%s"' "$value"
+}
+
+setup_admin_payload() {
+  printf '{"email":%s,"password":%s,"org_name":%s,"license_key":%s}' \
+    "$(json_string "$1")" "$(json_string "$2")" \
+    "$(json_string "$3")" "$(json_string "$4")"
+}
+
+validate_setup_password() {
+  local password="$1"
+  [[ ${#password} -ge 12 && ${#password} -le 256 \
+     && "$password" =~ [[:upper:]] && "$password" =~ [[:digit:]] ]] \
+    || die "Admin password must be 12–256 characters with an uppercase letter and a digit" 2
+}
+
+setup_admin_error_detail() {
+  # Validation responses can echo password/license inputs. Show only the
+  # server's detail/message fields, never the whole request-bearing response.
+  if command -v python3 >/dev/null; then
+    python3 -c '
+import json
+import sys
+
+try:
+    detail = json.load(sys.stdin).get("detail")
+    if isinstance(detail, str):
+        print(detail)
+    elif isinstance(detail, list):
+        for error in detail:
+            if isinstance(error, dict) and isinstance(error.get("msg"), str):
+                print(error["msg"])
+except (ValueError, AttributeError):
+    pass
+'
+  else
+    # Python is optional on the host; do not expose raw validation inputs as a
+    # fallback. The status and early policy validation still identify failures.
+    printf 'Use the setup wizard for validation details (python3 is unavailable).\n'
+  fi
+}
+
 # ── Parse CLI flags ────────────────────────────────────────────────────────
 usage() {
   sed -n '2,/^$/{s/^# \{0,1\}//;p;}' "$0" | head -n 40
@@ -353,6 +408,13 @@ if [ "$NON_INTERACTIVE" = "true" ]; then
     [ -z "$ADMIN_PASSWORD$ADMIN_PASSWORD_FILE" ] && missing="$missing admin_password"
   fi
   [ -z "$missing" ] || die "Non-interactive mode missing required fields:${missing}" 2
+  if [ "$SKIP_ADMIN" != "true" ]; then
+    ADMIN_PASSWORD_RESOLVED="$ADMIN_PASSWORD"
+    if [ -z "$ADMIN_PASSWORD_RESOLVED" ] && [ -n "$ADMIN_PASSWORD_FILE" ]; then
+      ADMIN_PASSWORD_RESOLVED=$(read_file "$ADMIN_PASSWORD_FILE" || true)
+    fi
+    validate_setup_password "$ADMIN_PASSWORD_RESOLVED"
+  fi
 fi
 
 # ── Resolve / generate secrets ──────────────────────────────────────────────
@@ -418,7 +480,7 @@ if [ -n "${OPENAI_API_KEY:-}" ] \
   log "OPENAI_API_KEY provided; setting EMBEDDING_PROVIDER=openai (override with --embedding-provider)."
 fi
 
-ADMIN_PASSWORD_RESOLVED="$ADMIN_PASSWORD"
+ADMIN_PASSWORD_RESOLVED="${ADMIN_PASSWORD_RESOLVED:-$ADMIN_PASSWORD}"
 if [ -z "$ADMIN_PASSWORD_RESOLVED" ] && [ -n "$ADMIN_PASSWORD_FILE" ]; then
   ADMIN_PASSWORD_RESOLVED=$(read_file "$ADMIN_PASSWORD_FILE" || true)
 fi
@@ -876,12 +938,27 @@ fi
 if [ "$SKIP_ADMIN" != "true" ] && [ "$NON_INTERACTIVE" = "true" ]; then
   [ -n "$ADMIN_PASSWORD_RESOLVED" ] || die "admin password not resolved" 2
   ORG_NAME="${HOSTNAME%%.*}"
+  # The installed license is readable by local users. This proof assumes a
+  # host with trusted local accounts; complete first-admin setup promptly.
+  license_proof=$(read_file "$CAURA_HOME/license/license.key") \
+    || die "Could not read installed license for setup" 4
+  [ -n "$license_proof" ] || die "Installed license is empty" 4
   log "Creating initial admin ${ADMIN_EMAIL}"
-  resp=$(curl -fsSk -X POST "$URL/api/setup/admin" \
+  # Stream the proof and password through stdin, not curl's process arguments.
+  resp=$(setup_admin_payload \
+    "$ADMIN_EMAIL" "$ADMIN_PASSWORD_RESOLVED" "$ORG_NAME" "$license_proof" \
+    | curl -sSk -X POST "$URL/api/setup/admin" \
     -H "Content-Type: application/json" \
-    -d "$(printf '{"email":"%s","password":"%s","org_name":"%s"}' \
-            "$ADMIN_EMAIL" "$ADMIN_PASSWORD_RESOLVED" "$ORG_NAME")") \
+    --data-binary @- -w '\n%{http_code}') \
     || die "/setup/admin failed — check logs: docker compose logs platform-auth-api" 5
+  unset license_proof
+  http_status="${resp##*$'\n'}"
+  resp="${resp%$'\n'*}"
+  if [[ ! "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+    detail=$(printf '%s' "$resp" | setup_admin_error_detail)
+    [ -z "$detail" ] || warn "$detail"
+    die "/setup/admin rejected the request (HTTP ${http_status})" 5
+  fi
   API_KEY=$(echo "$resp" | sed -n 's/.*"api_key":"\([^"]*\)".*/\1/p')
   # Machine-readable result for Ansible
   cat > "$CAURA_HOME/install-result.json" <<EOF

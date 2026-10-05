@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ _SRC = _HERE.parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from cauractl import cli as cli_mod  # noqa: E402
 from cauractl.cli import cli  # noqa: E402
 
 
@@ -52,8 +54,6 @@ def test_cli_help_lists_commands():
 
 def test_rollback_errors_without_marker(monkeypatch, tmp_path):
     """Fresh install has no .memclaw-prev-version — should refuse cleanly."""
-    from cauractl import cli as cli_mod
-
     monkeypatch.setattr(cli_mod, "DEFAULT_HOME", tmp_path)
     runner = CliRunner()
     result = runner.invoke(cli, ["rollback", "-y"])
@@ -63,8 +63,6 @@ def test_rollback_errors_without_marker(monkeypatch, tmp_path):
 
 def test_plugin_install_url_emits_copy_paste(monkeypatch, tmp_path):
     """install-url should print a ready-to-paste curl line and flag missing api-key."""
-    from cauractl import cli as cli_mod
-
     monkeypatch.setattr(cli_mod, "DEFAULT_HOME", tmp_path)
     (tmp_path / ".env").write_text("PUBLIC_HOSTNAME=onprem.example\n")
     runner = CliRunner()
@@ -150,8 +148,6 @@ def test_status_calls_both_endpoints(monkeypatch):
     transport = httpx.MockTransport(handler)
 
     # Patch httpx.Client to use our mock transport
-    from cauractl import cli as cli_mod
-
     orig_client = cli_mod._client
 
     def fake_client(url, admin_key):
@@ -174,6 +170,9 @@ def test_setup_reports_api_key(monkeypatch, tmp_path: Path):
         if "/setup/license" in str(request.url):
             return httpx.Response(200, json={"ok": True})
         if "/setup/admin" in str(request.url):
+            body = json.loads(request.content)
+            assert body["license_key"] == "eyJhbGc.stub.sig"
+            assert body["password"] == "Correct-horse-battery-staple1"
             return httpx.Response(
                 200,
                 json={
@@ -188,8 +187,6 @@ def test_setup_reports_api_key(monkeypatch, tmp_path: Path):
         return httpx.Response(404)
 
     transport = httpx.MockTransport(handler)
-    from cauractl import cli as cli_mod
-
     monkeypatch.setattr(
         cli_mod,
         "_client",
@@ -202,12 +199,13 @@ def test_setup_reports_api_key(monkeypatch, tmp_path: Path):
             "setup",
             "--license", str(license_file),
             "--email", "a@acme.example",
-            "--password", "correct-horse-battery-staple",
+            "--password", "Correct-horse-battery-staple1",
             "--org-name", "Acme",
         ],
     )
     assert result.exit_code == 0, result.output
     assert "mc_smoketestkey" in result.output
+    assert "eyJhbGc.stub.sig" not in result.output
 
 
 def test_the_readme_installs_the_name_pyproject_declares():
