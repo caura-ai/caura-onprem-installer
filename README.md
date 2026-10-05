@@ -25,6 +25,15 @@ The installer stands up the stack with sane defaults, then prints the URL
 of the first-run wizard where an admin uploads the license and creates the
 first user account.
 
+First-admin creation requires possession of the installed signed license.
+The wizard, silent installer and `cauractl setup` send the license key in the
+admin request body. Update these clients before deploying an auth-api revision
+that requires this proof; older clients without it receive 422. A first-admin
+password needs at least 12 characters, an uppercase letter and a digit.
+License contents are confidential: use HTTPS and keep them out of logs and URLs.
+On the host, the license file is readable by local users: complete first-admin
+setup promptly and use only hosts with trusted local accounts.
+
 ## Quickstart (air-gapped VM)
 
 1. Transfer the release tarball to the VM (any medium — USB, SCP over an

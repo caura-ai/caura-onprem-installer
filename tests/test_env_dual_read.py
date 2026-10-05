@@ -381,7 +381,7 @@ def test_an_explicit_provider_survives_the_openai_autoflip(tmp_path, label, env,
 _AUTOFLIP = _extract_block(
     "install.sh",
     '# Auto-flip the default EMBEDDING_PROVIDER=local to "openai" when the',
-    'ADMIN_PASSWORD_RESOLVED="$ADMIN_PASSWORD"',
+    'ADMIN_PASSWORD_RESOLVED="${ADMIN_PASSWORD_RESOLVED:-$ADMIN_PASSWORD}"',
 )
 
 _ENV_KEY_FN = _extract_function("upgrade.sh", "_env_key")
