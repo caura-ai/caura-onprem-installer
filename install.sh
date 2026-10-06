@@ -331,7 +331,7 @@ fi
 # pattern applied to the rest.
 _EMBEDDING_PROVIDER_CHOSEN="$EMBEDDING_PROVIDER"   # before the default lands
 CAURA_HOME="${CAURA_HOME:-/opt/memclaw}"  # legacy-name-floor: floor, and the install root default
-CAURA_VERSION="${CAURA_VERSION:-v2.11.19}"
+CAURA_VERSION="${CAURA_VERSION:-v2.13.0}"
 OFFLINE="${OFFLINE:-false}"
 SKIP_ADMIN="${SKIP_ADMIN:-false}"
 EMAIL_PROVIDER="${EMAIL_PROVIDER:-log}"

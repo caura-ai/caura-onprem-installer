@@ -1491,7 +1491,7 @@ def test_the_shipped_default_still_lands_when_nothing_sets_the_key(tmp_path, key
     """Deferring the defaults must not have dropped them."""
     expected = {
         "CAURA_HOME": "/opt/memclaw",  # legacy-name-floor: the floor install path
-        "CAURA_VERSION": "v2.11.19",
+        "CAURA_VERSION": "v2.13.0",
         "EMAIL_PROVIDER": "log",
         "EMBEDDING_PROVIDER": "local",
         "OFFLINE": "false",
