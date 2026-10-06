@@ -51,10 +51,16 @@ location = /onprem-ca.pem {
 # ── Internal auth_request target ──
 # Sub-request to auth-api's /auth/validate for every /api/* call that
 # needs authn. The response headers carry:
-#   X-Tenant-ID, X-User-Id, X-Agent-Id, X-Org-Read-Only,
-#   X-Readable-Tenant-IDs (cross-tenant credentials), X-Key-Scopes
+#   X-Tenant-ID, X-User-Id, X-Agent-Id, X-Org-Read-Only, X-Org-Role,
+#   X-Readable-Tenant-IDs (cross-tenant credentials), X-Capabilities,
+#   X-Auth-Mode, X-Caura-Credential-Kind, X-Install-UUID
 # which we then inject into the upstream request so core-api etc. see
 # the auth context + read-only flag (license expiry / org suspension).
+# A location that sends X-Gateway-Secret vouches for all of them, so it
+# sets every one from here, as the hosted gateway does; one it left out
+# would reach the backend with the client's own value. X-Key-Scopes is
+# the older name for X-Capabilities, still read by core-api as a
+# fallback, so it is set (and so cleared) the same way.
 # auth_request never sees the request body and is cheap (auth-api
 # caches the 30s read-only check in-memory).
 location = /_auth {
@@ -162,6 +168,12 @@ location ^~ /api/keys {
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $backend_auth $upstream_http_x_backend_authorization;
+    auth_request_set $agent_id $upstream_http_x_agent_id;
+    auth_request_set $auth_mode $upstream_http_x_auth_mode;
+    auth_request_set $credential_kind $upstream_http_x_caura_credential_kind;
+    auth_request_set $capabilities $upstream_http_x_capabilities;
+    auth_request_set $org_role $upstream_http_x_org_role;
+    auth_request_set $install_uuid $upstream_http_x_install_uuid;
     rewrite ^/api/keys(.*)$ /api/v1/admin/api-keys$1 break;
     proxy_pass http://$admin_upstream;
     proxy_set_header Host $host;
@@ -177,6 +189,12 @@ location ^~ /api/keys {
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
+    proxy_set_header X-Agent-Id $agent_id;
+    proxy_set_header X-Auth-Mode $auth_mode;
+    proxy_set_header X-Caura-Credential-Kind $credential_kind;
+    proxy_set_header X-Capabilities $capabilities;
+    proxy_set_header X-Org-Role $org_role;
+    proxy_set_header X-Install-UUID $install_uuid;
 }
 
 location ^~ /api/agent-keys {
@@ -187,6 +205,12 @@ location ^~ /api/agent-keys {
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $backend_auth $upstream_http_x_backend_authorization;
+    auth_request_set $agent_id $upstream_http_x_agent_id;
+    auth_request_set $auth_mode $upstream_http_x_auth_mode;
+    auth_request_set $credential_kind $upstream_http_x_caura_credential_kind;
+    auth_request_set $capabilities $upstream_http_x_capabilities;
+    auth_request_set $org_role $upstream_http_x_org_role;
+    auth_request_set $install_uuid $upstream_http_x_install_uuid;
     rewrite ^/api/agent-keys(.*)$ /api/v1/admin/agent-keys$1 break;
     proxy_pass http://$admin_upstream;
     proxy_set_header Host $host;
@@ -202,6 +226,12 @@ location ^~ /api/agent-keys {
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
+    proxy_set_header X-Agent-Id $agent_id;
+    proxy_set_header X-Auth-Mode $auth_mode;
+    proxy_set_header X-Caura-Credential-Kind $credential_kind;
+    proxy_set_header X-Capabilities $capabilities;
+    proxy_set_header X-Org-Role $org_role;
+    proxy_set_header X-Install-UUID $install_uuid;
 }
 
 # ── Admin + superadmin + orgs + usage (all on admin-api /api/v1/*) ──
@@ -222,6 +252,12 @@ location ~ ^/api/(admin|superadmin|orgs|usage|security-audit|tenants|billing)(/|
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $backend_auth $upstream_http_x_backend_authorization;
+    auth_request_set $agent_id $upstream_http_x_agent_id;
+    auth_request_set $auth_mode $upstream_http_x_auth_mode;
+    auth_request_set $credential_kind $upstream_http_x_caura_credential_kind;
+    auth_request_set $capabilities $upstream_http_x_capabilities;
+    auth_request_set $org_role $upstream_http_x_org_role;
+    auth_request_set $install_uuid $upstream_http_x_install_uuid;
     rewrite ^/api/(.*)$ /api/v1/$1 break;
     proxy_pass http://$admin_upstream;
     proxy_set_header Host $host;
@@ -237,6 +273,12 @@ location ~ ^/api/(admin|superadmin|orgs|usage|security-audit|tenants|billing)(/|
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
+    proxy_set_header X-Agent-Id $agent_id;
+    proxy_set_header X-Auth-Mode $auth_mode;
+    proxy_set_header X-Caura-Credential-Kind $credential_kind;
+    proxy_set_header X-Capabilities $capabilities;
+    proxy_set_header X-Org-Role $org_role;
+    proxy_set_header X-Install-UUID $install_uuid;
 }
 
 # ── Full-path admin-api calls. The dashboard occasionally hits the
@@ -254,6 +296,12 @@ location ~ ^/api/v1/(admin|superadmin|billing|usage|orgs)(/|$) {
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $backend_auth $upstream_http_x_backend_authorization;
+    auth_request_set $agent_id $upstream_http_x_agent_id;
+    auth_request_set $auth_mode $upstream_http_x_auth_mode;
+    auth_request_set $credential_kind $upstream_http_x_caura_credential_kind;
+    auth_request_set $capabilities $upstream_http_x_capabilities;
+    auth_request_set $org_role $upstream_http_x_org_role;
+    auth_request_set $install_uuid $upstream_http_x_install_uuid;
     proxy_pass http://$admin_upstream;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -268,6 +316,12 @@ location ~ ^/api/v1/(admin|superadmin|billing|usage|orgs)(/|$) {
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
+    proxy_set_header X-Agent-Id $agent_id;
+    proxy_set_header X-Auth-Mode $auth_mode;
+    proxy_set_header X-Caura-Credential-Kind $credential_kind;
+    proxy_set_header X-Capabilities $capabilities;
+    proxy_set_header X-Org-Role $org_role;
+    proxy_set_header X-Install-UUID $install_uuid;
 }
 
 # ── Memories, search, recall, entities, fleet, documents, evolve, agents
@@ -280,6 +334,11 @@ location ~ ^/api/(memories|search|recall|entities|relations|fleet|documents|evol
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    auth_request_set $capabilities $upstream_http_x_capabilities;
+    auth_request_set $auth_mode $upstream_http_x_auth_mode;
+    auth_request_set $credential_kind $upstream_http_x_caura_credential_kind;
+    auth_request_set $org_role $upstream_http_x_org_role;
+    auth_request_set $install_uuid $upstream_http_x_install_uuid;
     rewrite ^/api/(.*)$ /api/v1/$1 break;
     proxy_pass http://$core_upstream;
     proxy_set_header Host $host;
@@ -295,6 +354,11 @@ location ~ ^/api/(memories|search|recall|entities|relations|fleet|documents|evol
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
+    proxy_set_header X-Capabilities $capabilities;
+    proxy_set_header X-Auth-Mode $auth_mode;
+    proxy_set_header X-Caura-Credential-Kind $credential_kind;
+    proxy_set_header X-Org-Role $org_role;
+    proxy_set_header X-Install-UUID $install_uuid;
 }
 
 # ── Plugin install + source — UNAUTH on purpose. OpenClaw's bootstrap
@@ -335,6 +399,12 @@ location = /mcp {
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    auth_request_set $user_id $upstream_http_x_user_id;
+    auth_request_set $capabilities $upstream_http_x_capabilities;
+    auth_request_set $auth_mode $upstream_http_x_auth_mode;
+    auth_request_set $credential_kind $upstream_http_x_caura_credential_kind;
+    auth_request_set $org_role $upstream_http_x_org_role;
+    auth_request_set $install_uuid $upstream_http_x_install_uuid;
 
     proxy_pass http://$core_upstream;
     proxy_set_header Host $host;
@@ -345,10 +415,16 @@ location = /mcp {
     # Proves these identity headers came from the gateway, not a direct caller on
     # the Docker network. core-api 401s the header-trust path on a mismatch.
     proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
+    proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Agent-Id $agent_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
+    proxy_set_header X-Capabilities $capabilities;
+    proxy_set_header X-Auth-Mode $auth_mode;
+    proxy_set_header X-Caura-Credential-Kind $credential_kind;
+    proxy_set_header X-Org-Role $org_role;
+    proxy_set_header X-Install-UUID $install_uuid;
     proxy_set_header X-API-Key "";
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
@@ -362,6 +438,12 @@ location /mcp/ {
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    auth_request_set $user_id $upstream_http_x_user_id;
+    auth_request_set $capabilities $upstream_http_x_capabilities;
+    auth_request_set $auth_mode $upstream_http_x_auth_mode;
+    auth_request_set $credential_kind $upstream_http_x_caura_credential_kind;
+    auth_request_set $org_role $upstream_http_x_org_role;
+    auth_request_set $install_uuid $upstream_http_x_install_uuid;
 
     proxy_pass http://$core_upstream;
     proxy_set_header Host $host;
@@ -372,10 +454,16 @@ location /mcp/ {
     # Proves these identity headers came from the gateway, not a direct caller on
     # the Docker network. core-api 401s the header-trust path on a mismatch.
     proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
+    proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Agent-Id $agent_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
+    proxy_set_header X-Capabilities $capabilities;
+    proxy_set_header X-Auth-Mode $auth_mode;
+    proxy_set_header X-Caura-Credential-Kind $credential_kind;
+    proxy_set_header X-Org-Role $org_role;
+    proxy_set_header X-Install-UUID $install_uuid;
     proxy_set_header X-API-Key "";
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
@@ -395,6 +483,11 @@ location /api/ {
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
+    auth_request_set $capabilities $upstream_http_x_capabilities;
+    auth_request_set $auth_mode $upstream_http_x_auth_mode;
+    auth_request_set $credential_kind $upstream_http_x_caura_credential_kind;
+    auth_request_set $org_role $upstream_http_x_org_role;
+    auth_request_set $install_uuid $upstream_http_x_install_uuid;
     rewrite ^/api/(?!v1/)(.*)$ /api/v1/$1 break;
     proxy_pass http://$core_upstream;
     proxy_set_header Host $host;
@@ -410,6 +503,11 @@ location /api/ {
     proxy_set_header X-Org-Read-Only $org_read_only;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
+    proxy_set_header X-Capabilities $capabilities;
+    proxy_set_header X-Auth-Mode $auth_mode;
+    proxy_set_header X-Caura-Credential-Kind $credential_kind;
+    proxy_set_header X-Org-Role $org_role;
+    proxy_set_header X-Install-UUID $install_uuid;
 }
 
 # ── SPA catch-all → app-frontend ──
