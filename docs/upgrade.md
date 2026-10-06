@@ -1,8 +1,15 @@
 # Upgrade guide
 
-Upgrades are **tag-driven** and fully reversible. Bump `CAURA_VERSION`
-in `.env`, pull the new images, restart. Data stays in Docker named
-volumes — never touched by the upgrade.
+Upgrades are **tag-driven** and fully reversible. Run `upgrade.sh` with the
+target version: it refreshes the installer bundle, pulls the new images,
+rebuilds the gateway and restarts. Data stays in Docker named volumes — never
+touched by the upgrade.
+
+The gateway is the one part that is not an image you pull. It is built on your
+machine from `nginx/`, which ships in the installer bundle (`bundle.tar.gz`)
+together with the compose files and `scripts/`. An upgrade that only pulls new
+images keeps the old gateway configuration, and a newer release may need the
+new one. That is why the manual steps below refresh the bundle too.
 
 > **Operators / Caura-managed fleet:** if the deployment fronts the stack with
 > the TLS (Caddy) overlay or runs the scheduler services (`core-operations`,
@@ -31,19 +38,38 @@ intermediate steps.
 ## Connected upgrade
 
 ```bash
+curl -fsSL https://onprem.caura.ai/upgrade.sh | sudo bash -s -- --to v1.1.0
+```
+
+`upgrade.sh` takes a database snapshot first (`--no-backup` skips it), records
+the version it is leaving so a rollback is one command, refreshes the bundle,
+pulls the images, rebuilds the gateway and waits for health checks, rolling
+back on its own if they fail. `--dry-run` shows the plan without changing
+anything.
+
+### Manual alternative
+
+If you cannot run the script, do what it does:
+
+```bash
 cd /opt/memclaw
 
 # 1. Take a safety backup
 ./scripts/backup.sh
 
-# 2. Pick the target version
+# 2. Refresh the bundle: compose files, the gateway's nginx/, scripts/.
+#    .env and your own docker-compose.override.yml are not in it.
+curl -fsSL https://onprem.caura.ai/bundle.tar.gz | tar -xz -C .
+
+# 3. Pick the target version
 ./scripts/set-version.sh v1.1.0
 
-# 3. Pull + roll
-docker compose pull
+# 4. Pull, rebuild the gateway from the refreshed nginx/, roll
+docker compose pull --ignore-buildable
+docker compose build gateway
 docker compose up -d
 
-# 4. Watch migrations run
+# 5. Watch migrations run
 docker compose logs -f platform-storage-api
 # → look for "alembic upgrade head" and "Application startup complete"
 ```
