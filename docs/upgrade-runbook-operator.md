@@ -43,7 +43,9 @@ Compose file set on these boxes (**always pass all three**, in this order):
 gh api -X POST repos/caura-ai/caura-enterprise/git/refs \
   -f ref=refs/tags/onprem-vX.Y.Z -f sha=$(gh api repos/caura-ai/caura-enterprise/commits/dev --jq .sha)
 ```
-`release-onprem.yml` builds **11** images (8 services + `core-operations` + `core-worker` + `platform-operations`). The `core-api-embedder` job **fails (404) — expected** for OpenAI customers; that marks the overall run "failure" and **skips `finalize`** (air-gap tarball/sign/SBOM). The 11 service images still publish — verify those jobs are green.
+`release-onprem.yml` builds 9 service images (8 services + `core-operations`) and `core-api-embedder`, and pushes each under both registry names, `caura-onprem-` and the legacy prefix. `finalize` then signs them, writes the SBOMs, uploads the air-gap tarball and creates the GitHub release; it runs only when every build job is green. A tag push builds caura-ai/caura `main` as it stands at that moment; to build a specific OSS commit, start the workflow by dispatch with `oss_ref`.
+
+**Installer (`caura-onprem-installer`):** the boxes build the gateway from the `nginx/` in the published bundle, not from an image. A release that needs a change to `nginx/` or the compose files needs it in that bundle: merge it here, then run caura-onprem's `publish-installer` workflow so `https://onprem.caura.ai/bundle.tar.gz` carries it before any box upgrades.
 
 > **New-image ghcr gotcha:** a brand-new image package is **private** by default; on-prem `docker pull` 401s until you make it public (OSS-sourced images) or grant access. (`core-operations`/`core-worker` are public; `platform-operations` is enterprise and currently private/deferred.)
 
@@ -51,7 +53,7 @@ gh api -X POST repos/caura-ai/caura-enterprise/git/refs \
 
 - **Migrations:** compare public (core-storage) + enterprise (platform-storage) Alembic heads to what's deployed; they run on container lifespan during the cutover.
 - **Destructive lifecycle/migrations:** if the release introduces a destructive op (e.g. a new retention purge) or a heavy migration, **analyze first-run impact read-only first** (count affected rows) and get sign-off before deploying.
-- Gateway/nginx: rebuilt locally regardless (`docker compose build gateway`).
+- Gateway/nginx: rebuilt locally from the refreshed bundle's `nginx/` (Phase 4, steps 2 and 5). If the release changes `nginx/`, confirm the published bundle has it before cutting over.
 - Confirm embedding provider (`EMBEDDING_PROVIDER=openai` → embedder 404 is fine).
 
 ## Phase 3 — Validate on the staging mirror (never skip)
@@ -69,7 +71,13 @@ F="-f docker-compose.yml -f docker-compose.override.yml -f docker-compose.tls-le
 # 1. Backup FIRST
 bash scripts/backup.sh
 
-# 2. Bump versions — keep the scheduler images in lockstep with the stack
+# 2. Refresh the installer bundle: compose files, nginx/ (step 5 builds the
+#    gateway from it) and scripts/. .env and docker-compose.override.yml are not
+#    in it; a box-local edit to a bundled file is overwritten, so keep those in
+#    the override. Skip this and step 5 rebuilds the gateway from the old nginx/.
+curl -fsSL https://onprem.caura.ai/bundle.tar.gz | tar -xz -C .
+
+# 3. Bump versions — keep the scheduler images in lockstep with the stack
 # Rewrites whichever spelling of the version key this .env carries, and
 # refuses rather than reporting success if it carries neither.
 ./scripts/set-version.sh vX.Y.Z
@@ -78,17 +86,17 @@ bash scripts/backup.sh
 # reports it and exits 0 rather than treating it as an error.
 ./scripts/set-version.sh --ops vX.Y.Z
 
-# 3. Pull service images — INCLUDING core-operations (and platform-operations if deployed)
+# 4. Pull service images — INCLUDING core-operations (and platform-operations if deployed)
 docker compose $F pull core-api core-storage-api platform-admin-api platform-auth-api \
   platform-audit-api platform-storage-api app-frontend core-operations
 
-# 4. Build gateway locally
+# 5. Build gateway locally
 docker compose $F build gateway
 
-# 5. Force-recreate platform-storage-api -> triggers enterprise Alembic (runs only on lifespan)
+# 6. Force-recreate platform-storage-api -> triggers enterprise Alembic (runs only on lifespan)
 docker compose $F up -d --force-recreate --no-deps platform-storage-api
 
-# 6. Bring everything up -> public Alembic + recreates core-storage, core-api, core-operations, ...
+# 7. Bring everything up -> public Alembic + recreates core-storage, core-api, core-operations, ...
 docker compose $F up -d
 ```
 

@@ -1277,10 +1277,10 @@ def test_the_runbooks_call_the_script_rather_than_spelling_a_sed():
 def test_runbooks_calling_the_script_say_what_to_do_without_it():
     """set-version.sh reaches a box only with a bundle refresh.
 
-    Neither manual upgrade path refreshes the bundle before the version step —
-    the connected one goes backup, set version, pull, up — so on any install
-    created before the script existed the file is simply not in
-    $CAURA_HOME/scripts/ and the documented command dies on the second step.
+    The connected paths refresh the bundle before the version step, but the
+    airgapped one cannot, so on any install created before the script existed
+    the file is simply not in $CAURA_HOME/scripts/ there and the documented
+    command fails.
     Every runbook that calls it therefore has to say what to do instead, and the
     fallback has to be a hand edit rather than another anchored command: the
     airgapped path has no network to fetch the bundle over.
