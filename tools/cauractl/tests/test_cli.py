@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 import pytest
 from click.testing import CliRunner
+from rich.console import Console
 
 # Make src/ importable when running `pytest` from the tools/cauractl dir
 # OR from the repo root.
@@ -59,6 +60,84 @@ def test_rollback_errors_without_marker(monkeypatch, tmp_path):
     result = runner.invoke(cli, ["rollback", "-y"])
     assert result.exit_code == 1
     assert "No .memclaw-prev-version" in result.output
+
+
+def _stub_upgrade_sh(home: Path, exit_code: int = 0) -> Path:
+    """An upgrade.sh that records its arguments, saved the way ``curl -o`` saves it."""
+    script = home / "upgrade.sh"
+    script.write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "{home}/args"\nexit {exit_code}\n'
+    )
+    script.chmod(0o644)
+    return home / "args"
+
+
+def test_upgrade_runs_a_downloaded_upgrade_sh_and_passes_offline_on(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(cli_mod, "DEFAULT_HOME", tmp_path)
+    recorded = _stub_upgrade_sh(tmp_path)
+    bundle = tmp_path / "bundle.tar.gz"
+    bundle.write_bytes(b"")
+    result = CliRunner().invoke(
+        cli, ["upgrade", "--to", "v2.14.0", "-y", "--offline", "--bundle", str(bundle)]
+    )
+    assert result.exit_code == 0, result.output
+    assert recorded.read_text().splitlines() == [
+        "--to",
+        "v2.14.0",
+        "--yes",
+        "--offline",
+        "--bundle",
+        str(bundle),
+    ]
+
+
+def test_rollback_passes_offline_on(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_mod, "DEFAULT_HOME", tmp_path)
+    marker = tmp_path / ".memclaw-prev-version"  # legacy-name-floor: the marker file upgrade.sh writes on existing installs
+    marker.write_text("v2.13.0\n")
+    recorded = _stub_upgrade_sh(tmp_path)
+    bundle = tmp_path / "bundle.tar.gz"
+    bundle.write_bytes(b"")
+    result = CliRunner().invoke(
+        cli, ["rollback", "-y", "--offline", "--bundle", str(bundle)]
+    )
+    assert result.exit_code == 0, result.output
+    assert recorded.read_text().splitlines() == [
+        "--to",
+        "v2.13.0",
+        "--yes",
+        "--offline",
+        "--bundle",
+        str(bundle),
+    ]
+
+
+def test_upgrade_exits_with_the_code_upgrade_sh_exits_with(monkeypatch, tmp_path):
+    # 5 is a failed upgrade whose rollback failed too: manual recovery needed.
+    monkeypatch.setattr(cli_mod, "DEFAULT_HOME", tmp_path)
+    _stub_upgrade_sh(tmp_path, exit_code=5)
+    result = CliRunner().invoke(cli, ["upgrade", "--to", "v2.14.0"])
+    assert result.exit_code == 5
+
+
+def test_a_missing_upgrade_sh_says_how_to_fetch_it(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_mod, "DEFAULT_HOME", tmp_path)
+    # Wide enough that the message is not wrapped, so its end can be checked.
+    monkeypatch.setattr(cli_mod, "console", Console(width=1000))
+    marker = tmp_path / ".memclaw-prev-version"  # legacy-name-floor: the marker file upgrade.sh writes on existing installs
+    marker.write_text("v2.13.0\n")
+    fetch = f"sudo curl -fsSL https://onprem.caura.ai/upgrade.sh -o {tmp_path / 'upgrade.sh'}"
+    for command in (["upgrade", "--to", "v2.14.0"], ["rollback", "-y"]):
+        result = CliRunner().invoke(cli, command)
+        assert result.exit_code == 1
+        # Last, so a paste of it carries no punctuation: curl would take a
+        # trailing "." for a second URL and fail after saving the file.
+        assert result.output.rstrip().endswith(fetch), result.output
+        # The bundle does not carry upgrade.sh, so refreshing it cannot help.
+        assert "bundle.tar.gz" not in result.output
+        assert "Rolling back" not in result.output
 
 
 def test_plugin_install_url_emits_copy_paste(monkeypatch, tmp_path):

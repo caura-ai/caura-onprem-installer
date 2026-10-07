@@ -176,13 +176,17 @@ prints the route your host can take, so after a live upgrade you can paste what
 it gave you.
 
 **Air-gapped installs have their own section below**: the same script, run
-with `--offline`. The routes here download, and so does the CLI's.
+with `--offline`. The routes here download.
 
-**If `upgrade.sh` is on disk**, which it is on any host that has upgraded
-before:
+**If you keep a copy of `upgrade.sh` in the install root.** Neither an install
+nor an upgrade puts one there or updates it. So fetch it (the `curl` line)
+before each run this way or the CLI's below, not just the first time: an old
+copy runs old upgrade logic. One saved before September 2026, for example, does
+not add the `CORE_STORAGE_SHARED_SECRET` that v2.13.0 needs.
 
 ```bash
 cd /opt/memclaw
+sudo curl -fsSL https://onprem.caura.ai/upgrade.sh -o upgrade.sh
 sudo bash ./upgrade.sh --to v1.0.0
 ```
 
@@ -208,7 +212,8 @@ broken endpoint is piped into `sudo bash` instead of `curl` failing.
 **If the operator CLI is installed**, `memclawctl rollback` is a shorthand for  <!-- legacy-name-floor: the shipped CLI's own command; an install whose CLI predates the alias has only this spelling -->
 the first form, and it picks the version for you: it reads the
 `.memclaw-prev-version` marker that `upgrade.sh` writes before it changes  <!-- legacy-name-floor: the on-disk marker file upgrade.sh writes -->
-anything, then re-runs this script with `--to <that version>`. Do not prefix it
+anything, then runs the install root's copy of `upgrade.sh`, the one the first
+form needs, with `--to <that version>`. Do not prefix it
 with `sudo` — `upgrade.sh` elevates itself when it cannot reach the Docker
 daemon, whereas `sudo` in front of the CLI looks for the CLI on root's `PATH`,
 where a per-user install is not.
@@ -231,6 +236,9 @@ filled in:
 ```bash
 sudo bash ./upgrade.sh --offline --bundle bundle.tar.gz --to v1.0.0
 ```
+
+The CLI does the same with `cauractl rollback --offline --bundle bundle.tar.gz`,
+once the `upgrade.sh` you upgraded with is copied into the install root.
 
 **It only works if the old images are still loaded.** `docker image prune`
 after a successful upgrade is what removes them, so if that has already run,

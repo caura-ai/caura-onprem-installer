@@ -53,12 +53,19 @@ install above is the supported path.
 | `cauractl license status` | Pretty-print current license + days remaining |
 | `cauractl backup --out /backups/` | Wraps scripts/backup.sh |
 | `cauractl restore --from <tar.gz>` | Wraps scripts/restore.sh |
-| `cauractl upgrade --to <version> [--dry-run] [--no-backup] [-y]` | Delegates to `$CAURA_HOME/upgrade.sh` — pre-upgrade pg_dump, pull, rolling up, health-stability check, auto-rollback |
-| `cauractl rollback [-y]` | Roll back to the version recorded in `.memclaw-prev-version` (written by upgrade.sh) |  <!-- legacy-name-floor: the on-disk marker file upgrade.sh writes -->
+| `cauractl upgrade --to <version> [--dry-run] [--no-backup] [-y] [--offline --bundle <bundle.tar.gz>]` | Delegates to `$CAURA_HOME/upgrade.sh` — pre-upgrade pg_dump, pull (with `--offline`, a check that the images are loaded), rolling up, health-stability check, auto-rollback |
+| `cauractl rollback [-y] [--offline --bundle <bundle.tar.gz>]` | Roll back to the version recorded in `.memclaw-prev-version` (written by upgrade.sh) |  <!-- legacy-name-floor: the on-disk marker file upgrade.sh writes -->
 | `cauractl plugin install-url --fleet-id <id> [--api-url ...] [--api-key ...]` | Print the exact `curl -X POST \| bash` command a customer runs on an OpenClaw VM |
 | `cauractl memory export <tenant> --api-key mc_...` | Stream all memories for a tenant to JSONL |
 | `cauractl memory import <tenant> --api-key mc_... --file dump.jsonl` | Load a JSONL dump back into a tenant |
 | `cauractl api <METHOD> <PATH> [--body file\|-] [--api-key mc_...]` | Generic authenticated passthrough to the running stack |
+
+`upgrade` and `rollback` run the copy of `upgrade.sh` in the install root, and
+neither an install nor an upgrade puts one there or updates it. Fetch it before
+each run, as [`docs/upgrade.md`](../../docs/upgrade.md#rollback-connected)
+shows, since an old copy runs old upgrade logic. On an air-gapped host, copy
+there the `upgrade.sh` you brought with the bundle you are using. Both commands exit with
+`upgrade.sh`'s exit code.
 
 ### Where each command runs
 
