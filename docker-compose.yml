@@ -229,9 +229,9 @@ services:
       ALLOYDB_DATABASE: "${POSTGRES_DB:-memclaw}"
       # Read under this name since v2.13.0: true refuses a database that will
       # not do TLS, for every connection this service opens, migrations
-      # included. It was passed as ALLOYDB_REQUIRE_SSL before, which no image
-      # has ever read. `:-` because install.sh writes it blank by default and
-      # the service rejects a blank boolean.
+      # included. It was passed as ALLOYDB_REQUIRE_SSL before, which
+      # core-storage-api has never read. `:-` because install.sh writes it
+      # blank by default and the service rejects a blank boolean.
       POSTGRES_REQUIRE_SSL: "${POSTGRES_REQUIRE_SSL:-false}"
       ENVIRONMENT: production
       # Storage-auth perimeter — must equal core-api's CORE_STORAGE_SHARED_SECRET.
@@ -263,11 +263,10 @@ services:
       # signs its storage calls with this; core-storage-api compares it. core-api
       # refuses to start without it from backend-2.46.0. Same value on both services.
       CORE_STORAGE_SHARED_SECRET: "${CORE_STORAGE_SHARED_SECRET:?install.sh or upgrade.sh generates this}"
-      ALLOYDB_HOST: "${POSTGRES_HOST:-postgres}"
-      ALLOYDB_PORT: "${POSTGRES_PORT:-5432}"
-      ALLOYDB_USER: "${POSTGRES_USER:-memclaw}"
-      ALLOYDB_PASSWORD: "${POSTGRES_PASSWORD}"
-      ALLOYDB_DATABASE: "${POSTGRES_DB:-memclaw}"
+      # No database settings, so not the password either: core-api has opened no
+      # database connection since OSS backend-v2.18.0, and everything it stores
+      # goes through core-storage-api. No core-api image this file can run is
+      # older; tests/test_db_credentials.py lists the evidence.
       REDIS_URL: redis://redis:6379/0
       IS_STANDALONE: "false"
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/

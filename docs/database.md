@@ -83,12 +83,13 @@ TLS.
 Neither service verifies the server's certificate, and the installer has
 no setting for that.
 
-Earlier copies of `docker-compose.yml` passed the setting under a name no
-service reads, so it had no effect on any version; `upgrade.sh` replaces
-that file. If your `.env` already says `true`, `upgrade.sh` checks that
-the database accepts TLS before it changes anything, when upgrading to
-v2.13.0 or later. If the database refuses, it stops there: turn on TLS at
-the database, or set `POSTGRES_REQUIRE_SSL=false`, and run it again.
+Earlier copies of `docker-compose.yml` passed the setting under a name
+that no service in any published release reads, so it had no effect;
+`upgrade.sh` replaces that file. If your `.env` already says `true`,
+`upgrade.sh` checks that the database accepts TLS before it changes
+anything, when upgrading to v2.13.0 or later. If the database refuses, it
+stops there: turn on TLS at the database, or set
+`POSTGRES_REQUIRE_SSL=false`, and run it again.
 
 ## The bundled `postgres` service in external mode
 
