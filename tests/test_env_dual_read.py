@@ -883,20 +883,6 @@ def test_the_api_key_option_actually_uses_a_list():
 _COMPOSE_FILES = [f for f in SCANNED if f.startswith("docker-compose.")]
 
 
-def _compose_available() -> bool:
-    if shutil.which("docker") is None:
-        return False
-    probe = subprocess.run(["docker", "compose", "version"], capture_output=True, check=False)
-    return probe.returncode == 0
-
-
-# Skip only when there is no compose to ask. A file compose cannot render is a
-# failure, not a reason to skip: the two tests below skipped on "required
-# variable ... is missing a value" on every run from 2026-08-25, when the
-# compose file began requiring GATEWAY_SHARED_SECRET, and nothing said so.
-needs_compose = pytest.mark.skipif(not _compose_available(), reason="needs docker compose")
-
-
 def test_every_compose_version_interpolation_is_first_non_empty():
     """Compose's ``:-`` treats blank as absent; ``-`` does not.
 
@@ -927,31 +913,12 @@ def test_every_compose_version_interpolation_is_first_non_empty():
     assert checked >= 20, f"expected the whole image-tag family, checked {checked}"
 
 
-@needs_compose
-def test_compose_resolves_image_tags_from_either_spelling():
+def test_compose_resolves_image_tags_from_either_spelling(compose_services):
     """Resolved by compose itself — the interpolation is its semantics, not ours."""
-    base = {
-        "PATH": os.environ["PATH"],
-        "POSTGRES_PASSWORD": "x",
-        "JWT_SECRET": "y" * 40,
-        "CORE_ADMIN_API_KEY": "z",
-        "SETTINGS_ENCRYPTION_KEY": "k",
-        "PUBLIC_HOSTNAME": "h.example",
-        "GATEWAY_SHARED_SECRET": "g",
-        "CORE_STORAGE_SHARED_SECRET": "s",
-    }
 
     def tag_of(service: str, env: dict[str, str]) -> str:
-        proc = subprocess.run(
-            ["docker", "compose", "-f", "docker-compose.yml", "config", "--format", "json"],
-            capture_output=True,
-            text=True,
-            env={**base, **env},
-            cwd=REPO_ROOT,
-            check=False,
-        )
-        assert proc.returncode == 0, f"compose could not render the file: {proc.stderr.strip()}"
-        return json.loads(proc.stdout)["services"][service]["image"].rsplit(":", 1)[1]
+        image: str = compose_services(env)[service]["image"]
+        return image.rsplit(":", 1)[1]
 
     old_only = {"MEMCLAW_VERSION": "v2.8.4"}  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
     assert tag_of("core-api", old_only) == "v2.8.4", "an existing .env stopped working"
@@ -1131,8 +1098,9 @@ def test_no_blank_valued_env_example_key_carries_a_trailing_comment():
     )
 
 
-@needs_compose
-def test_the_shipped_env_example_resolves_every_image_tag(tmp_path):
+def test_the_shipped_env_example_resolves_every_image_tag(
+    compose_services, compose_required_env, tmp_path
+):
     """Copy .env.example to .env, as its own header instructs, and it must work.
 
     Resolved by Compose itself. Asserting the version rather than merely that
@@ -1143,23 +1111,12 @@ def test_the_shipped_env_example_resolves_every_image_tag(tmp_path):
     work.mkdir()
     shutil.copy(REPO_ROOT / "docker-compose.yml", work)
     env = _read(".env.example")
-    for key, value in (
-        ("JWT_SECRET", "y" * 40),
-        ("POSTGRES_PASSWORD", "x"),
-        ("CORE_ADMIN_API_KEY", "z"),
-        ("SETTINGS_ENCRYPTION_KEY", "k"),
-        ("GATEWAY_SHARED_SECRET", "g"),
-        ("CORE_STORAGE_SHARED_SECRET", "s"),
-    ):
+    # Filled in the .env, not passed from the shell, so a required key the
+    # template lacks fails the render here as it would for an operator.
+    for key, value in compose_required_env.items():
         env = re.sub(rf"^{key}=$", f"{key}={value}", env, flags=re.MULTILINE)
     (work / ".env").write_text(env, encoding="utf-8")
-
-    proc = subprocess.run(
-        ["docker", "compose", "config", "--format", "json"],
-        capture_output=True, text=True, cwd=work, check=False,
-    )
-    assert proc.returncode == 0, f"compose could not render the file: {proc.stderr.strip()}"
-    services = json.loads(proc.stdout)["services"]
+    services = compose_services(cwd=work, required=False)
 
     # Bound and asserted rather than chained: an unmatched search returns None,
     # and .group() on it raises AttributeError, which reports as a broken test
