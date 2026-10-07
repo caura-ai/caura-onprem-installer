@@ -8,7 +8,8 @@
 #   sudo ./upgrade.sh --to v1.0.0 --no-backup
 #
 # What it does:
-#   1. Preflight — disk, current services healthy, license still valid.
+#   1. Preflight — disk, current services healthy, license still valid, and,
+#      when POSTGRES_REQUIRE_SSL is on, that the database accepts TLS.
 #   2. Resolve target version (from --to, or the ghcr `:latest` tag's digest
 #      resolved to its semver tag).
 #   3. Dry-run summary — from → to, images that will pull, backup plan.
@@ -268,6 +269,62 @@ if [ "$_EMBED_PROVIDER" = "local" ] \
   COMPOSE_FILES+=(-f docker-compose.embedder.yml)
 fi
 log "Compose overlays: ${COMPOSE_FILES[*]}"
+
+# ── TLS to the database ─────────────────────────────────────────────────────
+# Earlier bundles passed POSTGRES_REQUIRE_SSL to core-storage-api under a name
+# it does not read, so the setting did nothing. From v2.13.0 core-storage-api
+# enforces it and will not start against a database that refuses TLS. A .env
+# that set it while it was inert would fail the health wait only after
+# platform-storage-api has run the new version's migrations, and the rollback
+# would put the old images back over them. So ask the database now, through the
+# running core-storage-api, and stop before anything changes if it refuses.
+#
+# Stops only on a definite refusal. If the check itself cannot run (the
+# service is down, the probe errors some other way), it warns and carries on,
+# so an upgrade that works today is never blocked by the check.
+_check_db_tls() {
+  local flag to err rc=0
+  # As compose reads .env: an unquoted value ends at " #". Then pydantic's
+  # spellings of true, which is what core-storage-api parses it with.
+  flag=$(_GET POSTGRES_REQUIRE_SSL | sed -e 's/[[:space:]]#.*$//' -e 's/[[:space:]]*$//' \
+    | tr '[:upper:]' '[:lower:]')
+  case "$flag" in
+    1|t|true|y|yes|on) ;;
+    *) return 0 ;;
+  esac
+  # An older target does not read the setting, so there is nothing to protect
+  # (this script is also how a rollback to one runs). `latest` sorts after it.
+  to="${TO_VERSION#v}"
+  [ "$(printf '%s\n%s\n' "$to" 2.13.0 | sort -V | head -n 1)" = "2.13.0" ] || return 0
+
+  log "POSTGRES_REQUIRE_SSL is on: checking that the database accepts TLS"
+  local probe='
+import asyncio, os, sys
+import asyncpg
+async def probe():
+    dsn = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1)
+    conn = await asyncpg.connect(dsn, ssl="require", timeout=15)
+    await conn.close()
+try:
+    asyncio.run(probe())
+except Exception as exc:
+    print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+    sys.exit(3 if "rejected SSL upgrade" in str(exc) else 4)
+'
+  err=$(docker compose "${COMPOSE_FILES[@]}" exec -T core-storage-api python -c "$probe" 2>&1 >/dev/null) \
+    || rc=$?
+  case "$rc" in
+    0) log "The database accepts TLS" ;;
+    3) die "POSTGRES_REQUIRE_SSL is true in .env, but the database refuses TLS (${err}).
+       From v2.13.0 core-storage-api enforces that setting and would not start.
+       Turn on TLS at the database, or set POSTGRES_REQUIRE_SSL=false in
+       $CAURA_HOME/.env, then run this again. Nothing has been changed.
+       See docs/database.md, \"TLS to the database\"." 1 ;;
+    *) warn "Could not check whether the database accepts TLS (${err:-exit $rc})."
+       warn "Continuing. If it refuses TLS, core-storage-api will fail its health check and this upgrade rolls back." ;;
+  esac
+}
+_check_db_tls
 
 # ── DB backup ───────────────────────────────────────────────────────────────
 BACKUP_PATH=""

@@ -227,7 +227,12 @@ services:
       ALLOYDB_USER: "${POSTGRES_USER:-memclaw}"
       ALLOYDB_PASSWORD: "${POSTGRES_PASSWORD}"
       ALLOYDB_DATABASE: "${POSTGRES_DB:-memclaw}"
-      ALLOYDB_REQUIRE_SSL: "${POSTGRES_REQUIRE_SSL:-false}"
+      # Read under this name since v2.13.0: true refuses a database that will
+      # not do TLS, for every connection this service opens, migrations
+      # included. It was passed as ALLOYDB_REQUIRE_SSL before, which no image
+      # has ever read. `:-` because install.sh writes it blank by default and
+      # the service rejects a blank boolean.
+      POSTGRES_REQUIRE_SSL: "${POSTGRES_REQUIRE_SSL:-false}"
       ENVIRONMENT: production
       # Storage-auth perimeter — must equal core-api's CORE_STORAGE_SHARED_SECRET.
       CORE_STORAGE_SHARED_SECRET: "${CORE_STORAGE_SHARED_SECRET:?install.sh or upgrade.sh generates this}"
@@ -263,7 +268,6 @@ services:
       ALLOYDB_USER: "${POSTGRES_USER:-memclaw}"
       ALLOYDB_PASSWORD: "${POSTGRES_PASSWORD}"
       ALLOYDB_DATABASE: "${POSTGRES_DB:-memclaw}"
-      ALLOYDB_REQUIRE_SSL: "${POSTGRES_REQUIRE_SSL:-false}"
       REDIS_URL: redis://redis:6379/0
       IS_STANDALONE: "false"
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
