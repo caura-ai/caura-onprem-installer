@@ -49,6 +49,27 @@ USB, physical media).
 The script auto-detects `memclaw-onprem-*.tar.gz` in the current directory
 if you don't pass a path.
 
+### The gateway's base image
+
+The gateway is the one image the VM builds itself, from the bundle's
+`nginx/`, and the build needs the image `nginx/Dockerfile` starts from
+(`FROM nginx:1.27-alpine`). Tarballs from the release after v2.13.0
+carry it. With an older tarball, `airgap-load.sh` warns that it is
+missing; bring it over from a machine with internet access:
+
+```bash
+# On the connected machine
+docker pull --platform linux/amd64 nginx:1.27-alpine
+docker save nginx:1.27-alpine | gzip > gateway-base.tar.gz
+
+# On the VM, after copying the file across
+gunzip -c gateway-base.tar.gz | docker load
+```
+
+`airgap-load.sh` also removes any gateway image the tarball itself
+carried (tarballs up to v2.13.0 did). That image is not the on-prem
+gateway and cannot route this stack.
+
 ## 2. Run the installer in offline mode
 
 ```bash
@@ -67,7 +88,8 @@ if you don't pass a path.
 The `--offline` flag:
 - Skips `docker compose pull` (which would 401 without ghcr credentials)
 - Verifies the upstream base images (`pgvector/pgvector:pg16`, `redis:7-alpine`,
-  `rabbitmq:3-management-alpine`) are present locally — fails fast if not
+  `rabbitmq:3-management-alpine`) and the gateway's base image are present
+  locally — fails fast if not
 - Uses `docker-compose.airgap.yml` overlay so service images resolve to
   `memclaw-onprem/*:<version>` (the locally-loaded tags)
 
@@ -145,3 +167,4 @@ docker compose restart platform-admin-api platform-auth-api
 See `upgrade.md` — air-gap upgrades follow the same pattern: load the new
 release tarball with `airgap-load.sh`, bump `CAURA_VERSION=vX.Y.Z` in
 `/opt/memclaw/.env`, run `docker compose up -d`.
+Build the gateway before that last step; `upgrade.md` has the commands.

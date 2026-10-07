@@ -33,14 +33,16 @@ redis:7-alpine. Run airgap-load.sh first.
 ```
 
 **Root cause**: `--offline` assumes you've run `airgap-load.sh`; you
-haven't or it failed.
+haven't or it failed. If the missing image is `nginx:1.27-alpine`, it is
+the gateway's base, which tarballs up to v2.13.0 do not carry: see
+[the gateway's base image](install-airgap.md#the-gateways-base-image).
 
 **Fix**:
 
 ```bash
 ./airgap-load.sh /path/to/memclaw-onprem-<version>.tar.gz
 # verify
-docker images | grep -E '^pgvector|^redis|^rabbitmq'
+docker images | grep -E '^pgvector|^redis|^rabbitmq|^nginx'
 ./install.sh --offline ...   # retry
 ```
 
