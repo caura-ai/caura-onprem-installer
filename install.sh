@@ -128,6 +128,35 @@ die()   { printf '\033[31mERROR\033[0m %s\n' "$1" >&2; exit "${2:-1}"; }
 read_file() { [ -n "${1:-}" ] && [ -f "$1" ] && cat "$1"; }
 random_hex() { head -c "$1" /dev/urandom | xxd -p -c "$1"; }
 
+# The images a Dockerfile builds FROM, one per line: the first argument after
+# FROM that is not a --flag, skipping `scratch` and earlier stages. airgap-load.sh
+# carries the same function, and the release reads nginx/Dockerfile by the same
+# rule to put the gateway's base in the air-gap tarball.
+gateway_bases() {
+  awk 'toupper($1) == "FROM" {
+      img = ""
+      for (i = 2; i <= NF; i++) if ($i !~ /^--/) { img = $i; break }
+      if (img != "" && img != "scratch" && !(img in stage) && !(img in seen)) { print img; seen[img] = 1 }
+      for (j = i + 1; j < NF; j++) if (toupper($j) == "AS") stage[$(j + 1)] = 1
+    }' "$1"
+}
+
+# --offline: everything compose will need must already be loaded. The service
+# images resolve through the airgap overlay; the upstream bases keep their
+# Docker Hub names; and the gateway is built on this host from nginx/Dockerfile,
+# so the image that build starts from has to be here too.
+check_offline_images() {
+  local img missing="" bases
+  [ -f nginx/Dockerfile ] || die "--offline: nginx/Dockerfile missing from the bundle, so the gateway can be neither checked nor built. Extract the whole installer bundle and run install.sh from it." 3
+  bases=$(gateway_bases nginx/Dockerfile)
+  # One image per word, by design.
+  # shellcheck disable=SC2086
+  for img in pgvector/pgvector:pg16 redis:7-alpine rabbitmq:3-management-alpine $bases; do
+    docker image inspect "$img" >/dev/null 2>&1 || missing="$missing $img"
+  done
+  [ -z "$missing" ] || die "--offline: upstream base images missing:${missing}. Run airgap-load.sh first. Tarballs up to v2.13.0 do not carry the gateway's base image; docs/install-airgap.md says how to bring it." 3
+}
+
 # JSON strings for the setup body, without adding a host-side jq dependency.
 # Escape every ASCII control byte (Bash strings cannot contain NUL), as well as
 # quotes and backslashes, so password-file contents cannot alter the request.
@@ -825,12 +854,9 @@ if [ "$OFFLINE" = "true" ]; then
   COMPOSE_FILES+=(-f docker-compose.airgap.yml)
   # Verify the airgap tarball was loaded — the override swaps service images
   # to memclaw-onprem/* but the upstream bases (postgres, redis, rabbitmq)
-  # stay on their Docker Hub names and must be loaded locally too.
-  missing=""
-  for img in pgvector/pgvector:pg16 redis:7-alpine rabbitmq:3-management-alpine; do
-    docker image inspect "$img" >/dev/null 2>&1 || missing="$missing $img"
-  done
-  [ -z "$missing" ] || die "--offline: upstream base images missing:${missing}. Run airgap-load.sh first." 3
+  # stay on their Docker Hub names and must be loaded locally too, as must
+  # the gateway's base.
+  check_offline_images
   if [ "$LOCAL_EMBEDDINGS" = "true" ]; then
     [ -f docker-compose.embedder.airgap.yml ] || die "--offline + local embeddings: docker-compose.embedder.airgap.yml missing" 3
     COMPOSE_FILES+=(-f docker-compose.embedder.airgap.yml)

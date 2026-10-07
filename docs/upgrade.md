@@ -97,8 +97,14 @@ Identical flow, with two extra steps at the front:
 cd /opt/memclaw
 ./scripts/backup.sh
 ./scripts/set-version.sh v1.1.0
+docker compose -f docker-compose.yml -f docker-compose.airgap.yml build --no-cache gateway
 docker compose -f docker-compose.yml -f docker-compose.airgap.yml up -d
 ```
+
+The gateway is built on the VM from `nginx/`, as in a connected upgrade,
+and offline the build needs its base image already loaded. Tarballs from
+the release after v2.13.0 carry it; for an older one, see
+[the gateway's base image](install-airgap.md#the-gateways-base-image).
 
 The old images stay on disk. Once you've verified the new version,
 clean them up:
