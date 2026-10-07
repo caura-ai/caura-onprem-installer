@@ -18,8 +18,8 @@ set -euo pipefail
 
 # The images a Dockerfile builds FROM, one per line: the first argument after
 # FROM that is not a --flag, skipping `scratch` and earlier stages. install.sh
-# carries the same function, and the release reads nginx/Dockerfile by the same
-# rule to put the gateway's base in the air-gap tarball.
+# and upgrade.sh carry the same function, and the release reads nginx/Dockerfile
+# by the same rule to put the gateway's base in the air-gap tarball.
 gateway_bases() {
   awk 'toupper($1) == "FROM" {
       img = ""
@@ -116,3 +116,6 @@ echo "    1. cp .env.example .env && edit"
 echo "    2. drop your license.key into ./license/"
 echo "    3. docker compose -f docker-compose.yml -f docker-compose.airgap.yml build --no-cache gateway"
 echo "    4. docker compose -f docker-compose.yml -f docker-compose.airgap.yml up -d"
+echo "    Those are for a new install. To upgrade one that is running, run instead:"
+echo "    sudo bash ./upgrade.sh --offline --bundle <bundle.tar.gz> --to <version>"
+echo "    (docs/upgrade.md, Air-gap upgrade)"

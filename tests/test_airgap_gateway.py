@@ -87,10 +87,9 @@ def test_the_dockerfile_checks_the_base_ships_envsubst():
 # -- reading the base out of the Dockerfile ------------------------------------
 
 
-def test_both_scripts_read_the_base_the_same_way():
-    assert _function("install.sh", "gateway_bases") == _function(
-        "airgap-load.sh", "gateway_bases"
-    )
+@pytest.mark.parametrize("rel", ["airgap-load.sh", "upgrade.sh"])
+def test_every_script_reads_the_base_the_same_way(rel: str):
+    assert _function("install.sh", "gateway_bases") == _function(rel, "gateway_bases")
 
 
 @pytest.mark.parametrize(
@@ -293,8 +292,19 @@ def test_the_printed_next_steps_build_the_gateway_before_starting(tmp_path: Path
     assert out.index("build --no-cache gateway") < out.index("up -d")
 
 
-def test_the_air_gap_upgrade_docs_build_the_gateway_before_starting():
+def test_the_printed_next_steps_send_an_upgrade_to_upgrade_sh(tmp_path: Path):
+    # They are a new install's steps. Followed on a running install, they keep
+    # its old compose files and .env.
+    proc, _, _ = _airgap_load(tmp_path, before=[], loads=[*SERVICES, f"{BASE} n1"])
+    assert "upgrade.sh --offline --bundle" in proc.stdout
+
+
+def test_the_air_gap_upgrade_docs_leave_starting_the_stack_to_upgrade_sh():
+    # upgrade.sh --offline builds the gateway before it starts the stack, as
+    # test_upgrade_offline.py checks. The docs used to start it by hand, which
+    # kept the old compose files and .env.
     text = (REPO_ROOT / "docs/upgrade.md").read_text(encoding="utf-8")
     section = text.split("## Air-gap upgrade", 1)[1].split("\n## ", 1)[0]
-    assert "build --no-cache gateway" in section and "up -d" in section
-    assert section.index("build --no-cache gateway") < section.index("up -d")
+    commands = section.split("```bash", 1)[1].split("```", 1)[0]
+    assert "upgrade.sh --offline --bundle" in commands
+    assert "up -d" not in commands

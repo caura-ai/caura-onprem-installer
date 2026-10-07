@@ -164,7 +164,6 @@ docker compose restart platform-admin-api platform-auth-api
 
 ## Upgrades
 
-See `upgrade.md` — air-gap upgrades follow the same pattern: load the new
-release tarball with `airgap-load.sh`, bump `CAURA_VERSION=vX.Y.Z` in
-`/opt/memclaw/.env`, run `docker compose up -d`.
-Build the gateway before that last step; `upgrade.md` has the commands.
+Load the new release tarball with `airgap-load.sh`, then run
+`upgrade.sh --offline` with the new installer bundle. The steps are in
+[`upgrade.md`](upgrade.md#air-gap-upgrade).

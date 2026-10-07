@@ -130,8 +130,8 @@ random_hex() { head -c "$1" /dev/urandom | xxd -p -c "$1"; }
 
 # The images a Dockerfile builds FROM, one per line: the first argument after
 # FROM that is not a --flag, skipping `scratch` and earlier stages. airgap-load.sh
-# carries the same function, and the release reads nginx/Dockerfile by the same
-# rule to put the gateway's base in the air-gap tarball.
+# and upgrade.sh carry the same function, and the release reads nginx/Dockerfile
+# by the same rule to put the gateway's base in the air-gap tarball.
 gateway_bases() {
   awk 'toupper($1) == "FROM" {
       img = ""
