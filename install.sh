@@ -168,7 +168,11 @@ json_string() {
     printf -v char '\\%03o' "$code"
     printf -v char '%b' "$char"
     printf -v escaped '\\u%04x' "$code"
-    value="${value//"$char"/"$escaped"}"
+    # Unquoted on purpose: bash 4.2 and older (Amazon Linux 2, CentOS 7) keep
+    # the quotes of a quoted replacement in the result, which breaks the JSON.
+    # Neither needs quoting: a control byte is no glob character, and an
+    # expanded \uXXXX is taken as it is.
+    value="${value//$char/$escaped}"
   done
   printf '"%s"' "$value"
 }
