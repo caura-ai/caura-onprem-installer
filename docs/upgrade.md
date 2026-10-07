@@ -86,28 +86,46 @@ traffic until storage-api reports healthy.
 
 ## Air-gap upgrade
 
-Identical flow, with two extra steps at the front:
+`upgrade.sh --offline` does what a connected upgrade does, from files you
+bring to the host instead of downloading them. On a machine with internet
+access, fetch these and carry them across:
+
+- the release tarball for the new version, as for an
+  [air-gap install](install-airgap.md#prerequisites);
+- the installer bundle, `https://onprem.caura.ai/bundle.tar.gz`: the compose
+  files, the gateway's `nginx/`, `scripts/` and `airgap-load.sh`;
+- `https://onprem.caura.ai/upgrade.sh`.
+
+Then, on the host:
 
 ```bash
-# 1. Load the new images alongside the old ones
-./airgap-load.sh /path/to/memclaw-onprem-v1.1.0.tar.gz
+# 1. Load the new images alongside the old ones, with the new bundle's loader
+mkdir -p bundle && tar -xzf bundle.tar.gz -C bundle
+./bundle/airgap-load.sh /path/to/<release-tarball>.tar.gz
 
-# 2–4. Same as connected, but `docker compose pull` is a no-op — the
-#      airgap overlay resolves to locally-loaded tags.
-cd /opt/memclaw
-./scripts/backup.sh
-./scripts/set-version.sh v1.1.0
-docker compose -f docker-compose.yml -f docker-compose.airgap.yml build --no-cache gateway
-docker compose -f docker-compose.yml -f docker-compose.airgap.yml up -d
+# 2. Upgrade
+sudo bash ./upgrade.sh --offline --bundle bundle.tar.gz --to v1.1.0
 ```
 
-The gateway is built on the VM from `nginx/`, as in a connected upgrade,
-and offline the build needs its base image already loaded. Tarballs from
-the release after v2.13.0 carry it; for an older one, see
-[the gateway's base image](install-airgap.md#the-gateways-base-image).
+`--offline` changes three things. The bundle comes from the file you name.
+The stack runs the images you loaded (the air-gap overlay, as `install.sh
+--offline` chose). And instead of pulling, the script checks that every image
+the new version needs is loaded, including the one the gateway is built from;
+if one is missing, it names it and stops before anything restarts. The rest is
+as connected: a database snapshot first, the two shared secrets newer
+versions need added to `.env` if missing, the gateway rebuilt from the new
+`nginx/`, and a health wait that rolls back on failure.
 
-The old images stay on disk. Once you've verified the new version,
-clean them up:
+The gateway's base image is in tarballs from the release after v2.13.0; for an
+older one, see [the gateway's base image](install-airgap.md#the-gateways-base-image).
+
+Do not upgrade by loading the tarball and running `docker compose up -d`, as
+this page used to say. That keeps the old compose files and `.env`. An install
+from a bundle older than September 2026 has no `CORE_STORAGE_SHARED_SECRET`,
+and the core-api in v2.13.0 refuses to start without it.
+
+The old images stay on disk, and a rollback needs them. Once you've verified
+the new version, clean them up:
 
 ```bash
 docker image prune  # removes unreferenced images only
@@ -157,9 +175,8 @@ move, a snapshot is taken, and the result is health-checked. The success banner
 prints the route your host can take, so after a live upgrade you can paste what
 it gave you.
 
-**Air-gapped installs are different and have their own section below** —
-`upgrade.sh` fetches the bundle and pulls images, so it needs the network for
-any run, rollback included.
+**Air-gapped installs have their own section below**: the same script, run
+with `--offline`. The routes here download, and so does the CLI's.
 
 **If `upgrade.sh` is on disk**, which it is on any host that has upgraded
 before:
@@ -206,17 +223,20 @@ does none of that and can fail silently, as the next section explains.
 
 ## Rollback (air-gapped)
 
-`upgrade.sh` is not usable here, for the same reason it is not in the air-gap
-*upgrade* flow above: it refreshes the bundle over the network and runs
-`docker compose pull`, and it exits rather than continuing when either fails.
-So an offline rollback is the manual route, and it is the mirror image of the
-air-gap upgrade.
+A rollback is an offline upgrade toward the older tag, with the bundle you
+upgraded with: it runs every release since v2.11.16, the first with an air-gap
+tarball. The success banner of the upgrade prints the line with your paths
+filled in:
+
+```bash
+sudo bash ./upgrade.sh --offline --bundle bundle.tar.gz --to v1.0.0
+```
 
 **It only works if the old images are still loaded.** `docker image prune`
 after a successful upgrade is what removes them, so if that has already run,
 load the previous release tarball first with `./airgap-load.sh`.
 
-From the install root:
+If you cannot run the script, roll back by hand, from the install root:
 
 **1. Find out which spelling of the version key your `.env` actually carries**
 — run `grep -nE '^(CAURA|MEMCLAW)_VERSION=' .env`. Do not skip this and reach  <!-- legacy-name-ok: names both spellings of the version key, which is the whole point of the command -->
