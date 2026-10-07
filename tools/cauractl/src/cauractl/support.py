@@ -639,18 +639,41 @@ DEFAULT_SUPPORT_ENDPOINT = os.environ.get("CAURA_SUPPORT_URL") or os.environ.get
 
 
 def _hmac_key(license_id: str, issued_at: datetime) -> bytes:
-    """Mirror of CauraOps `onprem.heartbeat_auth.derive_hmac_key`."""
+    """Mirror of CauraOps `onprem.heartbeat_auth.derive_hmac_key`, the legacy key.
+
+    Both inputs are ordinary claims of an unencrypted JWT, so anyone who can
+    read them can sign as this licence. Used only for a licence issued before
+    CauraOps minted ``body_signing_secret`` (caura-enterprise ent-125).
+    """
     return hashlib.sha256(f"{license_id}:{issued_at.isoformat()}".encode()).digest()
 
 
-def _sign(body: bytes, license_id: str, issued_at: datetime) -> str:
+def _sign(
+    body: bytes,
+    license_id: str,
+    issued_at: datetime,
+    body_signing_secret: str | None,
+) -> str:
+    """Sign with the strongest key the licence carries.
+
+    The same choice as the heartbeat's ``_sign_body`` in caura-enterprise's
+    common/license/phone_home.py: the ``body_signing_secret`` claim's own bytes
+    when there is one, the legacy derivation otherwise. CauraOps'
+    ``verify_signature`` tries the two in that order and records which matched,
+    which is how it will know when the legacy key can be refused.
+    """
     import hmac
 
-    return hmac.new(_hmac_key(license_id, issued_at), body, hashlib.sha256).hexdigest()
+    key = (
+        body_signing_secret.encode()
+        if body_signing_secret
+        else _hmac_key(license_id, issued_at)
+    )
+    return hmac.new(key, body, hashlib.sha256).hexdigest()
 
 
-def _extract_license_jwt_fields(home: Path) -> tuple[str, datetime]:
-    """Read license.key → (license_id, issued_at)."""
+def _extract_license_jwt_fields(home: Path) -> tuple[str, datetime, str | None]:
+    """Read license.key → (license_id, issued_at, body_signing_secret or None)."""
     lic_path = home / "license" / "license.key"
     if not lic_path.is_file():
         raise click.ClickException(
@@ -675,7 +698,14 @@ def _extract_license_jwt_fields(home: Path) -> tuple[str, datetime]:
     # Ensure tz-aware; HMAC key is keyed on iso format so timezone matters.
     if issued_at.tzinfo is None:
         issued_at = issued_at.replace(tzinfo=UTC)
-    return license_id, issued_at
+    # Licences issued before CauraOps started minting the claim (caura-ops
+    # 87abb93, 2026-09-19) have none. An empty one counts as none, as it does for
+    # the CauraOps verifier, and so does a value that is not a string, which
+    # CauraOps never mints.
+    secret = claims.get("body_signing_secret")
+    if not isinstance(secret, str) or not secret:
+        secret = None
+    return license_id, issued_at, secret
 
 
 @support.command("upload")
@@ -738,7 +768,7 @@ def support_upload(
             )
             raise click.exceptions.Exit(1)
 
-    license_id, issued_at = _extract_license_jwt_fields(home)
+    license_id, issued_at, body_signing_secret = _extract_license_jwt_fields(home)
 
     with tarfile.open(bundle, "r:gz") as tar:
         manifest_member = _find_member(tar, "manifest.json")
@@ -759,7 +789,7 @@ def support_upload(
     data = bundle.read_bytes()
     bundle_sha = hashlib.sha256(data).hexdigest()
     signed_body = f"{license_id}.{manifest_for_wire}.{bundle_sha}".encode()
-    signature = _sign(signed_body, license_id, issued_at)
+    signature = _sign(signed_body, license_id, issued_at, body_signing_secret)
 
     import httpx
 
