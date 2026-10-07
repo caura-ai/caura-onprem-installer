@@ -61,6 +61,11 @@ services:
     environment:
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-memclaw}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-memclaw}"
       DB_SCHEMA: enterprise
+      # The same setting as core-storage-api's below, read by this service from
+      # the first on-prem release after v2.13.0; v2.13.0 ignores it. `:-`
+      # because install.sh writes it blank by default and the service rejects
+      # a blank boolean.
+      POSTGRES_REQUIRE_SSL: "${POSTGRES_REQUIRE_SSL:-false}"
       LOG_FORMAT_JSON: "true"
       LOG_FILE: /var/log/memclaw/platform-storage-api/platform-storage-api.log
     volumes:

@@ -1,10 +1,12 @@
-"""``POSTGRES_REQUIRE_SSL`` in .env reaches core-storage-api under the name it reads.
+"""``POSTGRES_REQUIRE_SSL`` reaches both storage services under the name they read.
 
 core-storage-api reads ``POSTGRES_REQUIRE_SSL`` (``postgres_require_ssl`` in its
 settings, no prefix) since v2.13.0. The compose passed the .env value on as
 ``ALLOYDB_REQUIRE_SSL``, a name core-storage-api has never read, so an
-operator who set it got neither TLS enforcement nor an error. Resolved by
-compose itself, since the interpolation is compose's semantics, not ours.
+operator who set it got neither TLS enforcement nor an error.
+platform-storage-api reads the same name from the first release after v2.13.0
+and is given it now; v2.13.0 ignores it. Resolved by compose itself, since the
+interpolation is compose's semantics, not ours.
 
 That turns a setting that did nothing into one that stops core-storage-api
 starting, so upgrade.sh asks the database first; the last block runs its real
@@ -24,22 +26,31 @@ pytestmark = [pytest.mark.unit]
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _require_ssl(compose_services, env: dict[str, str]) -> str | None:
-    services = compose_services(env)
-    return services["core-storage-api"]["environment"].get("POSTGRES_REQUIRE_SSL")
+# The two services that connect to Postgres, and so the two that read it.
+_STORAGE_SERVICES = ("core-storage-api", "platform-storage-api")
 
 
-def test_core_storage_api_gets_the_setting_under_the_name_it_reads(compose_services):
-    assert _require_ssl(compose_services, {"POSTGRES_REQUIRE_SSL": "true"}) == "true"
+def test_exactly_the_storage_services_get_the_setting(compose_services):
+    services = compose_services({"POSTGRES_REQUIRE_SSL": "true"})
+    given = {
+        name: svc["environment"]["POSTGRES_REQUIRE_SSL"]
+        for name, svc in services.items()
+        if "POSTGRES_REQUIRE_SSL" in (svc.get("environment") or {})
+    }
+    assert given == dict.fromkeys(_STORAGE_SERVICES, "true")
 
 
+@pytest.mark.parametrize("service", _STORAGE_SERVICES)
 @pytest.mark.parametrize(
     "env", [{}, {"POSTGRES_REQUIRE_SSL": ""}], ids=["unset", "blank"]
 )
-def test_blank_or_unset_resolves_to_false(compose_services, env: dict[str, str]):
-    # install.sh writes the key blank unless asked for TLS, and the service
+def test_blank_or_unset_resolves_to_false(
+    compose_services, env: dict[str, str], service: str
+):
+    # install.sh writes the key blank unless asked for TLS, and each service
     # refuses to start on a blank boolean, so blank must become "false".
-    assert _require_ssl(compose_services, env) == "false"
+    environment = compose_services(env)[service]["environment"]
+    assert environment.get("POSTGRES_REQUIRE_SSL") == "false"
 
 
 def test_no_service_is_given_the_name_nothing_reads(compose_services):
