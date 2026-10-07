@@ -68,12 +68,12 @@ Two services connect to Postgres: `platform-storage-api` and
 
 - **By default** (`POSTGRES_REQUIRE_SSL` blank or `false`), each one uses
   TLS when the server offers it, and connects unencrypted when it does not.
-- **`POSTGRES_REQUIRE_SSL=true`** (v2.13.0 and later) makes
-  `core-storage-api` refuse a server that will not do TLS, for every
-  connection it opens, migrations included. It fails to start rather than
-  fall back.
-- **`platform-storage-api` has no such setting.** With `true`, it still
-  connects unencrypted to a server that does not offer TLS.
+- **`POSTGRES_REQUIRE_SSL=true`** makes a service refuse a server that
+  will not do TLS, for every connection it opens, migrations included. It
+  fails to start rather than fall back. `core-storage-api` applies it from
+  v2.13.0, and `platform-storage-api` from the first release after v2.13.0.
+- **On v2.13.0, `platform-storage-api` ignores the setting.** With `true`,
+  it still connects unencrypted to a server that does not offer TLS.
 
 To be sure every connection is encrypted, make the server refuse
 unencrypted connections: `hostssl` lines only in `pg_hba.conf`, or your
