@@ -42,7 +42,7 @@ POSTGRES_PORT=5432                   # default 5432
 POSTGRES_USER=memclaw                # default memclaw
 POSTGRES_PASSWORD=<strong-password>  # the external DB user's password
 POSTGRES_DB=memclaw                  # default memclaw
-POSTGRES_REQUIRE_SSL=true            # true to require TLS to the DB
+POSTGRES_REQUIRE_SSL=true            # see "TLS to the database" below
 ```
 
 `install.sh` flags:
@@ -60,6 +60,35 @@ POSTGRES_REQUIRE_SSL=true            # true to require TLS to the DB
 
 `install.conf` keys: `postgres_host`, `postgres_port`, `postgres_user`,
 `postgres_db`, `postgres_require_ssl`.
+
+## TLS to the database
+
+Two services connect to Postgres: `platform-storage-api` and
+`core-storage-api`.
+
+- **By default** (`POSTGRES_REQUIRE_SSL` blank or `false`), each one uses
+  TLS when the server offers it, and connects unencrypted when it does not.
+- **`POSTGRES_REQUIRE_SSL=true`** (v2.13.0 and later) makes
+  `core-storage-api` refuse a server that will not do TLS, for every
+  connection it opens, migrations included. It fails to start rather than
+  fall back.
+- **`platform-storage-api` has no such setting.** With `true`, it still
+  connects unencrypted to a server that does not offer TLS.
+
+To be sure every connection is encrypted, make the server refuse
+unencrypted connections: `hostssl` lines only in `pg_hba.conf`, or your
+managed provider's "require SSL" option. Both services then connect over
+TLS.
+
+Neither service verifies the server's certificate, and the installer has
+no setting for that.
+
+Earlier copies of `docker-compose.yml` passed the setting under a name no
+service reads, so it had no effect on any version; `upgrade.sh` replaces
+that file. If your `.env` already says `true`, `upgrade.sh` checks that
+the database accepts TLS before it changes anything, when upgrading to
+v2.13.0 or later. If the database refuses, it stops there: turn on TLS at
+the database, or set `POSTGRES_REQUIRE_SSL=false`, and run it again.
 
 ## The bundled `postgres` service in external mode
 
