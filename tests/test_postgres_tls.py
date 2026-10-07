@@ -2,9 +2,9 @@
 
 core-storage-api reads ``POSTGRES_REQUIRE_SSL`` (``postgres_require_ssl`` in its
 settings, no prefix) since v2.13.0. The compose passed the .env value on as
-``ALLOYDB_REQUIRE_SSL``, a name no image has ever read, so an operator who set
-it got neither TLS enforcement nor an error. Resolved by compose itself, since
-the interpolation is compose's semantics, not ours.
+``ALLOYDB_REQUIRE_SSL``, a name core-storage-api has never read, so an
+operator who set it got neither TLS enforcement nor an error. Resolved by
+compose itself, since the interpolation is compose's semantics, not ours.
 
 That turns a setting that did nothing into one that stops core-storage-api
 starting, so upgrade.sh asks the database first; the last block runs its real
@@ -99,7 +99,11 @@ def test_no_service_is_given_the_name_nothing_reads():
         for name, svc in services.items()
         if "ALLOYDB_REQUIRE_SSL" in (svc.get("environment") or {})
     )
-    assert not given, f"ALLOYDB_REQUIRE_SSL is read by no image, but is set on {given}"
+    # core-api read it until OSS backend-v2.18.0, older than any image this
+    # compose can run (test_db_credentials.py has the evidence).
+    assert not given, (
+        f"nothing this compose runs reads ALLOYDB_REQUIRE_SSL, but {given} get it"
+    )
 
 
 # -- upgrade.sh: stop before anything changes if the database refuses TLS -----
