@@ -415,7 +415,9 @@ def _bytesio(data: bytes):
 # ── upload subcommand ─────────────────────────────────────────────────────
 
 
-def _fake_license_file(home: Path, license_id: str, issued_at_iso: str) -> None:
+def _fake_license_file(
+    home: Path, license_id: str, issued_at_iso: str, **claims: object
+) -> None:
     """Write a syntactically-valid (but unsigned) JWT file for tests."""
     import base64
 
@@ -423,17 +425,63 @@ def _fake_license_file(home: Path, license_id: str, issued_at_iso: str) -> None:
     home_dir.mkdir(parents=True, exist_ok=True)
     header = base64.urlsafe_b64encode(b'{"alg":"none","typ":"JWT"}').rstrip(b"=")
     payload = base64.urlsafe_b64encode(
-        json.dumps({"license_id": license_id, "issued_at": issued_at_iso}).encode()
+        json.dumps(
+            {"license_id": license_id, "issued_at": issued_at_iso, **claims}
+        ).encode()
     ).rstrip(b"=")
     signature = b"sig"
     (home_dir / "license.key").write_bytes(header + b"." + payload + b"." + signature)
 
 
-def test_upload_signs_and_posts(fake_home: Path, tmp_path: Path, monkeypatch):
+# The legacy key: sha256 of two claims anyone reading the licence can see.
+_LEGACY_KEY = hashlib.sha256(b"lic-abc:2026-04-20T00:00:00+00:00").digest()
+
+
+def _expected_signature(captured: dict, key: bytes) -> str:
+    """The signature CauraOps' verifier computes for what was posted, with ``key``."""
     import hmac as _hmac
 
-    _fake_license_file(fake_home, "lic-abc", "2026-04-20T00:00:00+00:00")
+    signed_body = (
+        b"lic-abc."
+        + captured["manifest"].encode()
+        + b"."
+        + hashlib.sha256(captured["bundle_bytes"]).hexdigest().encode()
+    )
+    return _hmac.new(key, signed_body, hashlib.sha256).hexdigest()
 
+
+@pytest.mark.parametrize(
+    "claims",
+    [
+        {},  # a licence issued before CauraOps minted the secret
+        {"body_signing_secret": ""},
+        {"body_signing_secret": None},
+        {"body_signing_secret": 123},  # not a secret CauraOps mints; no crash
+    ],
+)
+def test_upload_signs_and_posts(fake_home: Path, tmp_path: Path, monkeypatch, claims):
+    _fake_license_file(fake_home, "lic-abc", "2026-04-20T00:00:00+00:00", **claims)
+    captured = _upload(fake_home, tmp_path, monkeypatch)
+    assert captured["license_id"] == "lic-abc"
+    # Re-derive the signature server-side to prove determinism.
+    assert captured["signature"] == _expected_signature(captured, _LEGACY_KEY)
+
+
+def test_upload_signs_with_the_licences_signing_secret(
+    fake_home: Path, tmp_path: Path, monkeypatch
+):
+    secret = "per-licence-secret-minted-by-cauraops"
+    _fake_license_file(
+        fake_home, "lic-abc", "2026-04-20T00:00:00+00:00", body_signing_secret=secret
+    )
+    captured = _upload(fake_home, tmp_path, monkeypatch)
+    # The claim's own bytes are the key, with no hash: derive_hmac_key_from_secret.
+    assert captured["signature"] == _expected_signature(captured, secret.encode())
+    assert captured["signature"] != _expected_signature(captured, _LEGACY_KEY)
+
+
+def _upload(fake_home: Path, tmp_path: Path, monkeypatch) -> dict:
+    """Build a bundle, run ``support upload`` against a stand-in client, return the post."""
     bundle = build_bundle(
         fake_home,
         tmp_path / "out",
@@ -490,18 +538,7 @@ def test_upload_signs_and_posts(fake_home: Path, tmp_path: Path, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert "Uploaded" in result.output
-    assert captured["license_id"] == "lic-abc"
-
-    # Re-derive the signature server-side to prove determinism.
-    key = hashlib.sha256(b"lic-abc:2026-04-20T00:00:00+00:00").digest()
-    signed_body = (
-        b"lic-abc."
-        + captured["manifest"].encode()
-        + b"."
-        + hashlib.sha256(captured["bundle_bytes"]).hexdigest().encode()
-    )
-    expected = _hmac.new(key, signed_body, hashlib.sha256).hexdigest()
-    assert captured["signature"] == expected
+    return captured
 
 
 def test_upload_refuses_when_leak_scan_fails(tmp_path: Path, monkeypatch):
