@@ -7,6 +7,7 @@ loading or installation is performed by these tests.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -124,3 +125,22 @@ def test_error_details_omit_echoed_credential_inputs():
     assert result.stdout.strip() == "String should have at least 12 characters"
     assert "private-password" not in result.stdout
     assert "private-license-proof" not in result.stdout
+
+
+def test_no_shipped_script_quotes_a_substitution_replacement():
+    """bash 4.2 and older keep the quotes of ``${var//pat/"rep"}`` in the result.
+
+    Amazon Linux 2 and CentOS 7 ship bash 4.2, and the quoted form broke the
+    setup JSON there for any value holding a control byte. The round trip above
+    passes on the bash 5 CI has either way, so the spelling is held here.
+    """
+    quoted = re.compile(r'\$\{[A-Za-z_][A-Za-z_0-9]*//?[^}]*/"')
+    root = INSTALLER.parent
+    found = [
+        f"{path.relative_to(root)}:{n}: {line.strip()}"
+        for path in sorted(root.rglob("*.sh"))
+        if ".git" not in path.parts
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if quoted.search(line)
+    ]
+    assert not found, "\n".join(found)
