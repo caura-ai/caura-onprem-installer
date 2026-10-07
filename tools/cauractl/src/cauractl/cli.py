@@ -212,12 +212,64 @@ def restore(src: str, replace_config: bool) -> None:
     subprocess.check_call(cmd)
 
 
+UPGRADE_URL = "https://onprem.caura.ai/upgrade.sh"
+
+
+def _upgrade_sh() -> Path:
+    """The install root's upgrade.sh, which an operator has to put there.
+
+    An install does not: the bundle does not carry it and install.sh does not
+    copy it. The fetch command ends the message, so it pastes without a
+    sentence's punctuation after it.
+    """
+    script = DEFAULT_HOME / "upgrade.sh"
+    if not script.is_file():
+        _fail(
+            f"upgrade.sh missing at {script}. An install does not put it there. "
+            "On an air-gapped host, copy there the upgrade.sh you brought; "
+            f"otherwise fetch it with: sudo curl -fsSL {UPGRADE_URL} -o {script}"
+        )
+    return script
+
+
+def _run_upgrade_sh(script: Path, args: list[str]) -> None:
+    """Run it and exit with its exit code.
+
+    Through bash, because a copy saved with ``curl -o`` is not executable. The
+    exit code is passed on because the script's codes mean different things: 4
+    is a failed upgrade that rolled back, 5 one whose rollback failed too.
+    """
+    sys.exit(subprocess.call(["bash", str(script), *args]))
+
+
+def _offline_args(offline: bool, bundle: str | None) -> list[str]:
+    args = ["--offline"] if offline else []
+    if bundle:
+        args += ["--bundle", bundle]
+    return args
+
+
+_OFFLINE_HELP = "Air-gapped host: use the loaded images and --bundle, download nothing."
+_BUNDLE_HELP = "Installer bundle.tar.gz to use instead of downloading it."
+
+
 @cli.command()
 @click.option("--to", "version", required=True, help="Target version tag, e.g. v1.2.0.")
 @click.option("--dry-run", is_flag=True, help="Print the plan without applying.")
 @click.option("--no-backup", is_flag=True, help="Skip pre-upgrade DB snapshot.")
 @click.option("-y", "--yes", is_flag=True, help="Assume yes on prompts.")
-def upgrade(version: str, dry_run: bool, no_backup: bool, yes: bool) -> None:
+@click.option("--offline", is_flag=True, help=_OFFLINE_HELP)
+@click.option(
+    "--bundle", type=click.Path(exists=True, dir_okay=False), help=_BUNDLE_HELP
+)
+def upgrade(
+    version: str,
+    dry_run: bool,
+    no_backup: bool,
+    yes: bool,
+    offline: bool,
+    bundle: str | None,
+) -> None:
     """Snapshot DB, pull target images, roll services, auto-rollback on health failure.
 
     Delegates to ``$MEMCLAW_HOME/upgrade.sh`` — the same script customers
@@ -225,21 +277,15 @@ def upgrade(version: str, dry_run: bool, no_backup: bool, yes: bool) -> None:
     it from an operator's shell with the same flags, without memorising
     the URL.
     """
-    script = DEFAULT_HOME / "upgrade.sh"
-    if not script.is_file():
-        _fail(
-            f"upgrade.sh missing at {script}. Refresh the bundle: "
-            f"curl -fsSL https://onprem.caura.ai/bundle.tar.gz | "
-            f"sudo tar -xz -C {DEFAULT_HOME}"
-        )
-    cmd = [str(script), "--to", version]
+    script = _upgrade_sh()
+    args = ["--to", version]
     if dry_run:
-        cmd.append("--dry-run")
+        args.append("--dry-run")
     if no_backup:
-        cmd.append("--no-backup")
+        args.append("--no-backup")
     if yes:
-        cmd.append("--yes")
-    subprocess.check_call(cmd)
+        args.append("--yes")
+    _run_upgrade_sh(script, args + _offline_args(offline, bundle))
 
 
 # ── rollback ────────────────────────────────────────────────────────────────
@@ -247,7 +293,11 @@ def upgrade(version: str, dry_run: bool, no_backup: bool, yes: bool) -> None:
 
 @cli.command()
 @click.option("-y", "--yes", is_flag=True, help="Assume yes on prompts.")
-def rollback(yes: bool) -> None:
+@click.option("--offline", is_flag=True, help=_OFFLINE_HELP)
+@click.option(
+    "--bundle", type=click.Path(exists=True, dir_okay=False), help=_BUNDLE_HELP
+)
+def rollback(yes: bool, offline: bool, bundle: str | None) -> None:
     """Roll back to the version recorded in .memclaw-prev-version.
 
     Written by upgrade.sh right before any mutation, so we always know
@@ -263,14 +313,12 @@ def rollback(yes: bool) -> None:
     prev = marker.read_text().strip()
     if not prev:
         _fail(f"{marker.name} is empty.")
-    script = DEFAULT_HOME / "upgrade.sh"
-    if not script.is_file():
-        _fail(f"upgrade.sh missing at {script}; bundle refresh required.")
+    script = _upgrade_sh()
     console.print(f"[yellow]Rolling back to {prev}…[/yellow]")
-    cmd = [str(script), "--to", prev]
+    args = ["--to", prev]
     if yes:
-        cmd.append("--yes")
-    subprocess.check_call(cmd)
+        args.append("--yes")
+    _run_upgrade_sh(script, args + _offline_args(offline, bundle))
 
 
 # ── plugin install helper ──────────────────────────────────────────────────
