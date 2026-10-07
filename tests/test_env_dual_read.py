@@ -883,6 +883,20 @@ def test_the_api_key_option_actually_uses_a_list():
 _COMPOSE_FILES = [f for f in SCANNED if f.startswith("docker-compose.")]
 
 
+def _compose_available() -> bool:
+    if shutil.which("docker") is None:
+        return False
+    probe = subprocess.run(["docker", "compose", "version"], capture_output=True, check=False)
+    return probe.returncode == 0
+
+
+# Skip only when there is no compose to ask. A file compose cannot render is a
+# failure, not a reason to skip: the two tests below skipped on "required
+# variable ... is missing a value" on every run from 2026-08-25, when the
+# compose file began requiring GATEWAY_SHARED_SECRET, and nothing said so.
+needs_compose = pytest.mark.skipif(not _compose_available(), reason="needs docker compose")
+
+
 def test_every_compose_version_interpolation_is_first_non_empty():
     """Compose's ``:-`` treats blank as absent; ``-`` does not.
 
@@ -913,7 +927,7 @@ def test_every_compose_version_interpolation_is_first_non_empty():
     assert checked >= 20, f"expected the whole image-tag family, checked {checked}"
 
 
-@pytest.mark.skipif(shutil.which("docker") is None, reason="needs the docker CLI")
+@needs_compose
 def test_compose_resolves_image_tags_from_either_spelling():
     """Resolved by compose itself — the interpolation is its semantics, not ours."""
     base = {
@@ -921,9 +935,10 @@ def test_compose_resolves_image_tags_from_either_spelling():
         "POSTGRES_PASSWORD": "x",
         "JWT_SECRET": "y" * 40,
         "CORE_ADMIN_API_KEY": "z",
-        "PLATFORM_OPERATIONS_INTERNAL_TOKEN": "t",
         "SETTINGS_ENCRYPTION_KEY": "k",
         "PUBLIC_HOSTNAME": "h.example",
+        "GATEWAY_SHARED_SECRET": "g",
+        "CORE_STORAGE_SHARED_SECRET": "s",
     }
 
     def tag_of(service: str, env: dict[str, str]) -> str:
@@ -935,8 +950,7 @@ def test_compose_resolves_image_tags_from_either_spelling():
             cwd=REPO_ROOT,
             check=False,
         )
-        if proc.returncode != 0:
-            pytest.skip(f"docker compose unavailable here: {proc.stderr.strip()[:200]}")
+        assert proc.returncode == 0, f"compose could not render the file: {proc.stderr.strip()}"
         return json.loads(proc.stdout)["services"][service]["image"].rsplit(":", 1)[1]
 
     old_only = {"MEMCLAW_VERSION": "v2.8.4"}  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
@@ -949,7 +963,7 @@ def test_compose_resolves_image_tags_from_either_spelling():
 
     # The ops tag falls back through four names; the blank ones must all lose.
     ops = {"CAURA_OPS_VERSION": "", "MEMCLAW_OPS_VERSION": "v2.9.0", **old_only}  # legacy-name-ok: test pins the old spelling, which rule 3 keeps working
-    assert tag_of("platform-operations", ops) == "v2.9.0", BLANK_NEW_BEATEN_BY_OLD
+    assert tag_of("core-operations", ops) == "v2.9.0", BLANK_NEW_BEATEN_BY_OLD
 
 
 # ── item 5.4: what the docs teach ────────────────────────────────────────────
@@ -1117,7 +1131,7 @@ def test_no_blank_valued_env_example_key_carries_a_trailing_comment():
     )
 
 
-@pytest.mark.skipif(shutil.which("docker") is None, reason="needs the docker CLI")
+@needs_compose
 def test_the_shipped_env_example_resolves_every_image_tag(tmp_path):
     """Copy .env.example to .env, as its own header instructs, and it must work.
 
@@ -1133,8 +1147,9 @@ def test_the_shipped_env_example_resolves_every_image_tag(tmp_path):
         ("JWT_SECRET", "y" * 40),
         ("POSTGRES_PASSWORD", "x"),
         ("CORE_ADMIN_API_KEY", "z"),
-        ("PLATFORM_OPERATIONS_INTERNAL_TOKEN", "t"),
         ("SETTINGS_ENCRYPTION_KEY", "k"),
+        ("GATEWAY_SHARED_SECRET", "g"),
+        ("CORE_STORAGE_SHARED_SECRET", "s"),
     ):
         env = re.sub(rf"^{key}=$", f"{key}={value}", env, flags=re.MULTILINE)
     (work / ".env").write_text(env, encoding="utf-8")
@@ -1143,8 +1158,7 @@ def test_the_shipped_env_example_resolves_every_image_tag(tmp_path):
         ["docker", "compose", "config", "--format", "json"],
         capture_output=True, text=True, cwd=work, check=False,
     )
-    if proc.returncode != 0:
-        pytest.skip(f"docker compose unavailable here: {proc.stderr.strip()[:200]}")
+    assert proc.returncode == 0, f"compose could not render the file: {proc.stderr.strip()}"
     services = json.loads(proc.stdout)["services"]
 
     # Bound and asserted rather than chained: an unmatched search returns None,
@@ -1156,7 +1170,7 @@ def test_the_shipped_env_example_resolves_every_image_tag(tmp_path):
         "to compare the resolved image tags against"
     )
     pinned = pinned_match.group(1)
-    for name in ("core-api", "core-storage-api", "app-frontend", "platform-operations"):
+    for name in ("core-api", "core-storage-api", "app-frontend", "core-operations"):
         tag = services[name]["image"].rsplit(":", 1)[1]
         assert tag == pinned, (
             f"{name} resolved to {tag!r}, not the version the template pins "
