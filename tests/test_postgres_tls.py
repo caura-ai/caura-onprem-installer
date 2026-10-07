@@ -13,12 +13,9 @@ check against a fake ``docker``.
 
 from __future__ import annotations
 
-import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -26,74 +23,27 @@ pytestmark = [pytest.mark.unit]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# What compose needs set to render the file at all; none of it is under test.
-_REQUIRED = {
-    "GATEWAY_SHARED_SECRET": "g",
-    "POSTGRES_PASSWORD": "x",
-    "JWT_SECRET": "y" * 40,
-    "CORE_ADMIN_API_KEY": "z",
-    "PLATFORM_OPERATIONS_INTERNAL_TOKEN": "t",
-    "SETTINGS_ENCRYPTION_KEY": "k",
-    "PUBLIC_HOSTNAME": "h.example",
-    "CORE_STORAGE_SHARED_SECRET": "s",
-}
+
+def _require_ssl(compose_services, env: dict[str, str]) -> str | None:
+    services = compose_services(env)
+    return services["core-storage-api"]["environment"].get("POSTGRES_REQUIRE_SSL")
 
 
-def _compose_available() -> bool:
-    if shutil.which("docker") is None:
-        return False
-    probe = subprocess.run(
-        ["docker", "compose", "version"], capture_output=True, check=False
-    )
-    return probe.returncode == 0
+def test_core_storage_api_gets_the_setting_under_the_name_it_reads(compose_services):
+    assert _require_ssl(compose_services, {"POSTGRES_REQUIRE_SSL": "true"}) == "true"
 
 
-# Skip only when there is no compose to ask. A render that fails is a failure:
-# skipping on it is how a missing required variable turns a test into one that
-# never runs and never says so.
-needs_compose = pytest.mark.skipif(
-    not _compose_available(), reason="needs docker compose"
-)
-
-
-def _services(env: dict[str, str]) -> dict[str, Any]:
-    proc = subprocess.run(
-        ["docker", "compose", "-f", "docker-compose.yml", "config", "--format", "json"],
-        capture_output=True,
-        text=True,
-        env={"PATH": os.environ["PATH"], **_REQUIRED, **env},
-        cwd=REPO_ROOT,
-        check=False,
-    )
-    assert proc.returncode == 0, (
-        f"compose could not render the file: {proc.stderr.strip()}"
-    )
-    services: dict[str, Any] = json.loads(proc.stdout)["services"]
-    return services
-
-
-def _require_ssl(env: dict[str, str]) -> str | None:
-    return _services(env)["core-storage-api"]["environment"].get("POSTGRES_REQUIRE_SSL")
-
-
-@needs_compose
-def test_core_storage_api_gets_the_setting_under_the_name_it_reads():
-    assert _require_ssl({"POSTGRES_REQUIRE_SSL": "true"}) == "true"
-
-
-@needs_compose
 @pytest.mark.parametrize(
     "env", [{}, {"POSTGRES_REQUIRE_SSL": ""}], ids=["unset", "blank"]
 )
-def test_blank_or_unset_resolves_to_false(env: dict[str, str]):
+def test_blank_or_unset_resolves_to_false(compose_services, env: dict[str, str]):
     # install.sh writes the key blank unless asked for TLS, and the service
     # refuses to start on a blank boolean, so blank must become "false".
-    assert _require_ssl(env) == "false"
+    assert _require_ssl(compose_services, env) == "false"
 
 
-@needs_compose
-def test_no_service_is_given_the_name_nothing_reads():
-    services = _services({"POSTGRES_REQUIRE_SSL": "true"})
+def test_no_service_is_given_the_name_nothing_reads(compose_services):
+    services = compose_services({"POSTGRES_REQUIRE_SSL": "true"})
     given = sorted(
         name
         for name, svc in services.items()
