@@ -17,8 +17,12 @@ license file issued by Caura.
 
 ## Quickstart (connected VM)
 
+Set `CAURA_RELEASE_VERSION` to a published compatible service release; see
+[admin audit transport](docs/admin-audit-transport.md). An omitted version
+fails early because the historical default predates direct audit writes.
+
 ```bash
-curl -sL https://onprem.caura.ai/install.sh | bash
+curl -sL https://onprem.caura.ai/install.sh | bash -s -- --version "$CAURA_RELEASE_VERSION"
 ```
 
 The installer stands up the stack with sane defaults, then prints the URL
@@ -47,7 +51,7 @@ setup promptly and use only hosts with trusted local accounts.
    ```
 3. Run the installer in offline mode:
    ```
-   ./install.sh --offline --license /path/to/license.key
+   ./install.sh --offline --version "$CAURA_RELEASE_VERSION" --license /path/to/license.key
    ```
 
 ## Silent / unattended install

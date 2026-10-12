@@ -281,3 +281,27 @@ took in step 1:
 Caura commits to making minor-version migrations backwards-compatible
 within the same major. Cross-major migrations (v1.x → v2.x) will call
 this out in the release notes.
+
+
+## Broker-free release compatibility and rollback
+
+Install/upgrade preflight requires the admin image capability
+`ai.caura.admin-audit-transport=storage-http-inprocess-v1`, including for
+`latest`. See [admin audit transport](admin-audit-transport.md) for the paired
+release requirement and verification. A rollback to the recorded previous
+older numeric version restores its version-bound compose/nginx snapshot; it allows an
+unlabeled image only when that snapshot restores RabbitMQ. Arbitrary older
+targets need the matching older installer. Forward upgrades still require the
+capability. The initial check stops before backup or install file changes.
+`--dry-run --offline` verifies the loaded image capability without pulling.
+Connected dry-run states that compatibility remains unverified until execution. Forward re-upgrades use the supplied/download
+bundle; only a recorded numeric downgrade restores the saved snapshot. The
+script logs this choice explicitly. Nginx restoration overlays saved files and
+preserves files added since the snapshot.
+
+An offline rollback to a compose file that still declares RabbitMQ requires
+`rabbitmq:3-management-alpine` to remain loaded locally. Keep that image and its
+named volume until the rollback window closes; the new image tarball does not
+carry it. Do not add `--remove-orphans` during the upgrade. See
+[retired broker artifacts](day2-ops.md#retired-broker-artifacts) for deliberate
+container cleanup after verifying the upgrade.

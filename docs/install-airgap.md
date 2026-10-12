@@ -1,8 +1,7 @@
 # Install guide — air-gapped
 
 For customer VMs with **no outbound internet**. The tarball bundles every
-image needed (Caura services + upstream bases: Postgres/pgvector, Redis,
-RabbitMQ) so `docker compose` never needs to pull.
+image needed (Caura services + upstream bases: Postgres/pgvector, Redis, and gateway build bases) so `docker compose` never needs to pull.
 
 > **Local embeddings (`--embedding-provider local`).** A true air-gap
 > install needs the bundled embedder image (`memclaw-core-api-embedder`,
@@ -16,6 +15,9 @@ RabbitMQ) so `docker compose` never needs to pull.
 > embedding provider (OpenAI / Anthropic / Gemini). Without an embedder
 > image, memory writes still work but semantic recall returns
 > `503 Embedding service unavailable`.
+
+Set `CAURA_RELEASE_VERSION` to the compatible release loaded from the paired
+tarball; see [admin audit transport](admin-audit-transport.md).
 
 ## Prerequisites
 
@@ -43,7 +45,6 @@ USB, physical media).
 #     ...
 #     pgvector/pgvector:pg16
 #     redis:7-alpine
-#     rabbitmq:3-management-alpine
 ```
 
 The script auto-detects `memclaw-onprem-*.tar.gz` in the current directory
@@ -82,13 +83,12 @@ gateway and cannot route this stack.
   --license /path/to/license.key \
   --embedding-provider local \
   --email-provider log \
-  --version v1.0.0
+  --version "$CAURA_RELEASE_VERSION"
 ```
 
 The `--offline` flag:
 - Skips `docker compose pull` (which would 401 without ghcr credentials)
-- Verifies the upstream base images (`pgvector/pgvector:pg16`, `redis:7-alpine`,
-  `rabbitmq:3-management-alpine`) and the gateway's base image are present
+- Verifies the upstream base images (`pgvector/pgvector:pg16`, `redis:7-alpine`) and the gateway's base image are present
   locally — fails fast if not
 - Uses `docker-compose.airgap.yml` overlay so service images resolve to
   `memclaw-onprem/*:<version>` (the locally-loaded tags)

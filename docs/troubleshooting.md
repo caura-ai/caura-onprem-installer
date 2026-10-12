@@ -42,7 +42,7 @@ the gateway's base, which tarballs up to v2.13.0 do not carry: see
 ```bash
 ./airgap-load.sh /path/to/memclaw-onprem-<version>.tar.gz
 # verify
-docker images | grep -E '^pgvector|^redis|^rabbitmq|^nginx'
+docker images | grep -E '^pgvector|^redis|^nginx'
 ./install.sh --offline ...   # retry
 ```
 

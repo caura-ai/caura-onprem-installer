@@ -151,10 +151,35 @@ check_offline_images() {
   bases=$(gateway_bases nginx/Dockerfile)
   # One image per word, by design.
   # shellcheck disable=SC2086
-  for img in pgvector/pgvector:pg16 redis:7-alpine rabbitmq:3-management-alpine $bases; do
+  for img in pgvector/pgvector:pg16 redis:7-alpine $bases; do
     docker image inspect "$img" >/dev/null 2>&1 || missing="$missing $img"
   done
   [ -z "$missing" ] || die "--offline: upstream base images missing:${missing}. Run airgap-load.sh first. Tarballs up to v2.13.0 do not carry the gateway's base image; docs/install-airgap.md says how to bring it." 3
+}
+
+_require_explicit_audit_version() {
+  [ "$1" != "true" ] || die "The historical built-in default v2.13.0 predates direct admin audit persistence. Pass --version <release carrying ai.caura.admin-audit-transport=storage-http-inprocess-v1>, or set a compatible version in the config. No image has been pulled and no install file changed. See docs/admin-audit-transport.md." 2
+}
+
+# Image capability, rather than a guessed minimum version: the first compatible
+# release is not tagged yet. Never bypass this for an old tag or mutable latest.
+_check_admin_audit_transport() {
+  local version="$1" offline="$2" fetch="${3:-true}" image capability
+  if [ "$offline" = "true" ]; then
+    image="memclaw-onprem/platform-admin:$version"  # legacy-name-floor: published offline alias retained for existing air-gap bundles
+    docker image inspect "$image" >/dev/null 2>&1 \
+      || die "--offline: not loaded: $image. Load the paired release tarball with airgap-load.sh." 3
+  else
+    image="ghcr.io/caura-ai/caura-onprem-platform-admin:$version"
+    if [ "$fetch" = "true" ]; then
+      docker pull "$image" >/dev/null \
+        || die "Cannot fetch admin image $image. For an air-gap use upgrade.sh --offline --bundle <bundle.tar.gz> --to <version>. No running service has been changed." 3
+    fi
+  fi
+  capability=$(docker image inspect --format '{{ index .Config.Labels "ai.caura.admin-audit-transport" }}' "$image") \
+    || die "Cannot inspect admin audit capability on $image. No running service has been changed." 3
+  [ "$capability" = "storage-http-inprocess-v1" ] \
+    || die "Admin image $image lacks direct audit persistence (ai.caura.admin-audit-transport=storage-http-inprocess-v1). Obtain a paired service release, or use the installer matching the older release. The broker-free stack has not been started. See docs/admin-audit-transport.md." 1
 }
 
 # JSON strings for the setup body, without adding a host-side jq dependency.
@@ -364,6 +389,8 @@ fi
 # pattern applied to the rest.
 _EMBEDDING_PROVIDER_CHOSEN="$EMBEDDING_PROVIDER"   # before the default lands
 CAURA_HOME="${CAURA_HOME:-/opt/memclaw}"  # legacy-name-floor: floor, and the install root default
+_audit_version_defaulted="false"
+[ -n "$CAURA_VERSION" ] || _audit_version_defaulted="true"
 CAURA_VERSION="${CAURA_VERSION:-v2.13.0}"
 OFFLINE="${OFFLINE:-false}"
 SKIP_ADMIN="${SKIP_ADMIN:-false}"
@@ -395,6 +422,7 @@ export CAURA_LICENSE="$LICENSE_PATH" CAURA_LICENSE_URL="$LICENSE_URL"
 
 # ── Preflight ──────────────────────────────────────────────────────────────
 log "Preflight checks"
+_require_explicit_audit_version "$_audit_version_defaulted"
 command -v docker >/dev/null || die "Docker ≥ 24 required (not found on PATH)" 1
 
 # CLI on PATH isn't enough — we need to actually reach dockerd. When the user
@@ -519,6 +547,8 @@ if [ -z "$ADMIN_PASSWORD_RESOLVED" ] && [ -n "$ADMIN_PASSWORD_FILE" ]; then
 fi
 
 # ── Stage install root ─────────────────────────────────────────────────────
+_check_admin_audit_transport "$CAURA_VERSION" "$OFFLINE"
+
 mkdir -p "$CAURA_HOME"/{license,nginx,scripts,backups}
 
 # License dir is writable by the container user so the first-run wizard's
@@ -857,7 +887,7 @@ if [ "$OFFLINE" = "true" ]; then
   [ -f docker-compose.airgap.yml ] || die "docker-compose.airgap.yml missing — load the tarball first" 3
   COMPOSE_FILES+=(-f docker-compose.airgap.yml)
   # Verify the airgap tarball was loaded — the override swaps service images
-  # to memclaw-onprem/* but the upstream bases (postgres, redis, rabbitmq)
+  # to the offline image namespace, but upstream bases (postgres, redis)
   # stay on their Docker Hub names and must be loaded locally too, as must
   # the gateway's base.
   check_offline_images
@@ -884,6 +914,9 @@ else
     docker compose "${COMPOSE_FILES[@]}" pull || true
   fi
 fi
+
+# Inspect again after compose pull, including mutable tags, without repulling.
+_check_admin_audit_transport "$CAURA_VERSION" "$OFFLINE" false
 
 # Force-rebuild the gateway from the (possibly-updated) bundled
 # nginx/Dockerfile. `docker compose up -d` alone would reuse a cached

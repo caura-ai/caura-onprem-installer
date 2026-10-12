@@ -24,7 +24,7 @@ services:
     image: "memclaw-onprem/app:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
   # MISSING UNTIL NOW, and it is the one service this overlay has to swap that
   # it did not. Every other service in docker-compose.yml is either replaced
-  # above or is an upstream base -- postgres, rabbitmq, redis -- which the
+  # above or is an upstream base -- postgres, redis -- which the
   # tarball loads under its own name, so compose finds it with no override.
   # core-operations is neither: its image is a ghcr.io reference, and an
   # air-gapped host has no registry to reach. So the scheduler has been the one

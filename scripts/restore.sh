@@ -4,8 +4,8 @@
 # Usage:
 #   ./restore.sh /path/to/memclaw-backup-<ts>.tar.gz
 #
-# Restores Postgres (pg_restore --clean), Redis (RDB copy + restart), and
-# optionally RabbitMQ definitions. Does NOT overwrite .env or license.key
+# Restores Postgres (pg_restore --clean) and Redis (RDB copy + restart).
+# Does NOT overwrite .env or license.key
 # unless --replace-config is passed.
 set -euo pipefail
 
@@ -44,9 +44,7 @@ if [ -f "$WORK/redis.rdb" ]; then
 fi
 
 if [ -f "$WORK/rabbitmq-defs.json" ]; then
-  echo "==> Importing RabbitMQ definitions"
-  docker compose cp "$WORK/rabbitmq-defs.json" rabbitmq:/tmp/defs.json
-  docker compose exec -T rabbitmq rabbitmqctl import_definitions /tmp/defs.json || true
+  echo "==> Ignoring legacy RabbitMQ definitions (broker retired; archive preserved)"
 fi
 
 if [ "$REPLACE_CONFIG" = "true" ]; then

@@ -145,7 +145,7 @@ def _check_offline_images(
     return _bash(script, tmp_path)
 
 
-UPSTREAM = ["pgvector/pgvector:pg16", "redis:7-alpine", "rabbitmq:3-management-alpine"]
+UPSTREAM = ["pgvector/pgvector:pg16", "redis:7-alpine"]
 
 
 def test_offline_install_passes_with_every_base_loaded(tmp_path: Path):
@@ -162,7 +162,7 @@ def test_offline_install_stops_without_the_gateway_base(tmp_path: Path):
 
 
 def test_offline_install_still_stops_without_an_upstream_base(tmp_path: Path):
-    proc = _check_offline_images(tmp_path, [UPSTREAM[0], UPSTREAM[2], BASE])
+    proc = _check_offline_images(tmp_path, [UPSTREAM[0], BASE])
     assert proc.returncode == 3
     assert UPSTREAM[1] in proc.stderr
 

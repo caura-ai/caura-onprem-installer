@@ -10,7 +10,7 @@ installs see `install-airgap.md`.
 - **Docker ≥ 24** and **docker compose v2** (both come bundled with
   recent Docker Desktop / Docker CE).
 - **8 GB RAM** (16 GB recommended for >50 concurrent users).
-- **50 GB disk** free for Postgres + Redis + RabbitMQ.
+- **50 GB disk** free for Postgres + Redis.
 - A DNS record pointing to the VM (e.g. `caura.acme.com → 10.0.0.42`).
 - A TLS certificate for that hostname (`cert.pem` + `key.pem`), or use the
   default self-signed cert / Let's Encrypt — see `TLS.md`.
@@ -31,7 +31,10 @@ installs see `install-airgap.md`.
 ## Version pinning
 
 `CAURA_VERSION` in `.env` controls which image tag every service runs.
-The installer pins it to a specific release (e.g. `v2.13.0`) by default —
+Supply `--version <compatible-release>` explicitly (or a compatible config
+version). The historical built-in `v2.13.0` default predates direct audit writes
+and is refused before any pull or file changes. See
+[compatible images](admin-audit-transport.md). For supported service images,
 keep it pinned to a release tag rather than `latest` so the deployment is
 reproducible and every service runs the same version. Bump it deliberately
 when upgrading (see `upgrade.md`).
@@ -52,7 +55,7 @@ Caura needs an embedding backend for semantic recall:
 ## Option A — zero-config one-liner
 
 ```bash
-curl -sL https://onprem.caura.ai/install.sh | bash
+curl -sL https://onprem.caura.ai/install.sh | bash -s -- --version "$CAURA_RELEASE_VERSION"
 ```
 
 What it does:

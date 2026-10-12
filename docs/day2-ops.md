@@ -2,7 +2,7 @@
 
 ## Backups
 
-`scripts/backup.sh` snapshots Postgres + Redis + RabbitMQ definitions +
+`scripts/backup.sh` snapshots Postgres + Redis +
 the `.env` + `license.key` into a single tarball.
 
 ```bash
@@ -94,3 +94,24 @@ hourly loop is fail-safe — an unreadable or missing file keeps the cached
 license and polls every ~30s rather than flipping the org read-only. A
 restart is fail-fast: the license is read during startup and a service
 refuses to start on an invalid one.
+
+## Retired broker artifacts
+
+The broker-free stack needs Postgres and Redis backups. Restore accepts older
+archives and reports that `rabbitmq-defs.json` is ignored; the archive remains
+unchanged. Installer upgrades do not delete existing RabbitMQ named volumes.
+Keep old backups and volumes for a planned rollback; no automatic cleanup is
+performed. Pair this installer with service images containing the direct admin
+audit persistence fix before relying on new audit writes.
+
+
+After verifying direct audit writes, identify the retired container for this
+install's compose project with `docker ps -a --filter label=com.docker.compose.service=rabbitmq`.
+Check the project label and mount/volume name with `docker inspect <container-id>`.
+Stop it with `docker stop <container-id>` and remove only that container with
+`docker rm <container-id>`; do not use `-v`. Keep its named volume and the
+`rabbitmq:3-management-alpine` image throughout the rollback window. Offline
+rollback to an older compose requires that image locally; do not prune it.
+After explicitly closing that window, identify the project's `rabbitmqdata`
+volume with `docker volume ls` and remove only that confirmed unused volume
+with `docker volume rm <project-rabbitmqdata-volume>`. Retain backup archives.

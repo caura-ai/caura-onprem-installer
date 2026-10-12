@@ -43,7 +43,7 @@ SERVICES = [
     "app",
     "core-operations",
 ]
-UPSTREAM = ["pgvector/pgvector:pg16", "redis:7-alpine", "rabbitmq:3-management-alpine"]
+UPSTREAM = ["pgvector/pgvector:pg16", "redis:7-alpine"]
 GATEWAY_BASE = "nginx:1.27-alpine"
 # Marks the install's own compose file, so a refresh or a restore shows.
 AUGUST = "# from the August bundle"
@@ -54,7 +54,16 @@ _FAKE_DOCKER = r"""#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FAKE/calls"
 case "$1" in
   info) exit 0 ;;
-  image) [ "$2" = inspect ] && grep -qxF "$3" "$FAKE/loaded"; exit ;;
+  image)
+    if [ "${3:-}" = --format ]; then
+      if [ "${FAKE_AUDIT_CHANGE:-no}" = yes ] && [ "$(grep -cF 'image inspect --format' "$FAKE/calls")" -gt 1 ]; then
+        exit 0
+      fi
+      [ "${FAKE_AUDIT_CAPABILITY:-yes}" = yes ] && echo storage-http-inprocess-v1
+      exit 0
+    fi
+    [ "$2" = inspect ] && grep -qxF "$3" "$FAKE/loaded"; exit ;;
+  pull) [ "${FAKE_PULL:-}" = ok ]; exit ;;
   compose) ;;
   *) exit 0 ;;
 esac
@@ -156,6 +165,8 @@ def upgrade(tmp_path: Path, compose_services, compose_required_env) -> Run:
         extra_env: dict[str, str] | None = None,
         network: bool = False,
         healthy: bool = True,
+        audit_capability: bool = True,
+        changed_capability: bool = False,
         via: str = "file",
     ) -> tuple[subprocess.CompletedProcess[str], dict[str, Any]]:
         lines = {**env_lines, **(extra_env or {})}
@@ -194,6 +205,8 @@ def upgrade(tmp_path: Path, compose_services, compose_required_env) -> Run:
                 "FAKE": str(fake),
                 **({"FAKE_BUNDLE": str(bundle), "FAKE_PULL": "ok"} if network else {}),
                 **({} if healthy else {"FAKE_HEALTH": "unhealthy"}),
+                "FAKE_AUDIT_CAPABILITY": "yes" if audit_capability else "no",
+                "FAKE_AUDIT_CHANGE": "yes" if changed_capability else "no",
             },
             check=False,
         )
@@ -323,7 +336,7 @@ def test_a_missing_air_gap_embedder_overlay_stops_before_anything(
 def test_a_release_not_yet_loaded_stops_before_anything_restarts(upgrade: Run):
     proc, r = upgrade(*OFFLINE, loaded=[*_release(FROM), *UPSTREAM, GATEWAY_BASE])
     assert proc.returncode == 3
-    assert f"{OLD_NS}/core-api:{TO}" in proc.stderr
+    assert f"{OLD_NS}/platform-admin:{TO}" in proc.stderr
     assert "airgap-load.sh" in proc.stderr
     assert not _compose_calls(r["calls"], "build")
     assert not _compose_calls(r["calls"], "up")
@@ -439,3 +452,102 @@ def test_the_gateway_is_the_only_service_compose_builds(compose_services):
     built = {name for name, svc in services.items() if "build" in svc}
     assert built == {"gateway"}
     assert fnmatch.fnmatch(services["gateway"]["image"], "*/gateway:*")
+
+
+def test_an_unsupported_admin_image_stops_before_backup_or_refresh(upgrade: Run):
+    proc, state = upgrade(*OFFLINE, loaded=EVERYTHING, audit_capability=False)
+    assert proc.returncode == 1
+    assert "lacks direct audit persistence" in proc.stderr
+    assert not _compose_calls(state["calls"], "exec")
+    assert not _compose_calls(state["calls"], "up")
+    assert state["env"]["CAURA_VERSION"] == FROM
+    assert AUGUST in (state["home"] / "docker-compose.yml").read_text()
+
+
+def test_a_changed_tag_after_pull_restores_files_without_restarting(upgrade: Run):
+    proc, state = upgrade("--to", TO, "--no-backup", network=True, changed_capability=True)
+    assert proc.returncode == 1
+    assert "compatibility changed after pull" in proc.stderr
+    assert not _compose_calls(state["calls"], "up")
+    assert state["env"]["CAURA_VERSION"] == FROM
+    assert AUGUST in (state["home"] / "docker-compose.yml").read_text()
+
+
+def _record_previous_compose(tmp_path: Path, target: str, *, broker: bool = True):
+    home = tmp_path / "home"
+    snapshot = home / ".compose-pre-upgrade"
+    snapshot.mkdir()
+    for file in home.glob("docker-compose*.yml"):
+        shutil.copyfile(file, snapshot / file.name)
+    source = (snapshot / "docker-compose.yml").read_text()
+    if broker:
+        source = source.replace(
+            "  platform-storage-api:\n",
+            "  rabbitmq:\n    image: rabbitmq:3-management-alpine\n\n  platform-storage-api:\n",
+            1,
+        )
+    (snapshot / "docker-compose.yml").write_text(source + "# recorded older compose\n")
+    shutil.copytree(home / "nginx", snapshot / "nginx")
+    (snapshot / ".version").write_text(target + "\n")
+    (home / ".memclaw-prev-version").write_text(target + "\n")  # legacy-name-floor: shipped rollback marker
+    return snapshot
+
+
+@pytest.mark.parametrize("offline", [False, True], ids=["connected", "offline"])
+def test_recorded_rollback_restores_broker_compose_for_unlabeled_old_images(
+    upgrade: Run, tmp_path: Path, offline: bool
+):
+    target = "v2.10.0"
+    _record_previous_compose(tmp_path, target)
+    args = ["--to", target, "--no-backup"]
+    if offline:
+        args += ["--offline", "--bundle", "bundle.tar.gz"]
+    proc, state = upgrade(
+        *args, network=not offline, audit_capability=False,
+        loaded=[*_release(target), *UPSTREAM, GATEWAY_BASE, "rabbitmq:3-management-alpine"],
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert state["env"]["CAURA_VERSION"] == target
+    restored = (state["home"] / "docker-compose.yml").read_text()
+    assert "# recorded older compose" in restored
+    assert "  rabbitmq:" in restored
+    assert (state["home"] / "nginx/Dockerfile").read_text() == OLD_DOCKERFILE
+    assert "image inspect --format" not in "\n".join(state["calls"])
+    assert _compose_calls(state["calls"], "up -d")
+
+
+@pytest.mark.parametrize("defect", ["marker", "snapshot-version", "broker-free"])
+def test_snapshot_mismatch_cannot_bypass_forward_capability_check(
+    upgrade: Run, tmp_path: Path, defect: str
+):
+    snapshot = _record_previous_compose(tmp_path, TO, broker=defect != "broker-free")
+    if defect == "marker":
+        (tmp_path / "home/.memclaw-prev-version").write_text(FROM)  # legacy-name-floor: shipped rollback marker
+    elif defect == "snapshot-version":
+        (snapshot / ".version").write_text(FROM)
+    proc, state = upgrade(*OFFLINE, loaded=EVERYTHING, audit_capability=False)
+    assert proc.returncode == 1
+    assert "lacks direct audit persistence" in proc.stderr
+    assert not _compose_calls(state["calls"], "up")
+    assert state["env"]["CAURA_VERSION"] == FROM
+
+
+def test_forward_reupgrade_uses_the_supplied_bundle_even_with_matching_snapshot(
+    upgrade: Run, tmp_path: Path
+):
+    _record_previous_compose(tmp_path, TO)
+    proc, state = upgrade(*OFFLINE, loaded=EVERYTHING)
+    assert proc.returncode == 0, proc.stderr
+    assert "# recorded older compose" not in (state["home"] / "docker-compose.yml").read_text()
+    assert "  rabbitmq:" not in (state["home"] / "docker-compose.yml").read_text()
+    assert "image inspect --format" in "\n".join(state["calls"])
+
+
+@pytest.mark.parametrize("capability", [False, True])
+def test_offline_dry_run_checks_loaded_capability_without_changes(upgrade: Run, capability: bool):
+    proc, state = upgrade(*OFFLINE, "--dry-run", loaded=EVERYTHING, audit_capability=capability)
+    assert proc.returncode == (0 if capability else 1)
+    assert not _compose_calls(state["calls"], "exec")
+    assert not _compose_calls(state["calls"], "up")
+    assert state["env"]["CAURA_VERSION"] == FROM
+    assert not any(call.startswith("pull ") for call in state["calls"])
