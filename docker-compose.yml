@@ -43,18 +43,6 @@ services:
       retries: 5
     logging: *default-logging
 
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    restart: unless-stopped
-    volumes:
-      - rabbitmqdata:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    logging: *default-logging
-
   platform-storage-api:
     image: "ghcr.io/caura-ai/caura-onprem-platform-storage:${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
     restart: unless-stopped
@@ -87,7 +75,6 @@ services:
     environment:
       PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
       JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env (32+ chars)}"
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       LICENSE_FILE: /etc/memclaw/license.key
       EMAIL_PROVIDER: "${EMAIL_PROVIDER:-log}"
       EMAIL_API_KEY: "${EMAIL_API_KEY:-}"
@@ -115,8 +102,6 @@ services:
     depends_on:
       platform-storage-api:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     logging: *default-logging
 
   platform-admin-api:
@@ -132,7 +117,6 @@ services:
       GATEWAY_SHARED_SECRET: "${GATEWAY_SHARED_SECRET:?install.sh or upgrade.sh generates this}"
       JWT_SECRET: "${JWT_SECRET}"
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       LICENSE_FILE: /etc/memclaw/license.key
       SERVICE_VERSION: "${CAURA_VERSION:-${MEMCLAW_VERSION:-latest}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
       BILLING_ENABLED: "false"
@@ -166,15 +150,12 @@ services:
     restart: unless-stopped
     environment:
       PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       LOG_FORMAT_JSON: "true"
       LOG_FILE: /var/log/memclaw/platform-audit-api/platform-audit-api.log
     volumes:
       - ./logs/platform-audit-api:/var/log/memclaw/platform-audit-api
     depends_on:
       platform-storage-api:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
     logging: *default-logging
 
@@ -274,7 +255,6 @@ services:
       # older; tests/test_db_credentials.py lists the evidence.
       REDIS_URL: redis://redis:6379/0
       IS_STANDALONE: "false"
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       # Reserved-agent-id write policy (allow|warn|reject). Wired from .env so
       # it is durable across upgrades — upgrade.sh regenerates this compose file
       # but preserves .env, so the operator's choice survives. Default warn
@@ -311,8 +291,6 @@ services:
       core-storage-api:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
     logging: *default-logging
 
@@ -377,4 +355,3 @@ services:
 volumes:
   pgdata:
   redisdata:
-  rabbitmqdata:

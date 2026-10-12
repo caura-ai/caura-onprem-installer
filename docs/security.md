@@ -21,7 +21,7 @@ on-prem deployment as shipped by this bundle, not Caura's hosted service.
 │  └────┬─────┴────┬─────┴────┬─────┴────┬─────┴────┬─────┘         │
 │       │          │          │          │          │               │
 │       ▼          ▼          ▼          ▼          ▼               │
-│     postgres  redis     rabbitmq                                  │
+│     postgres  redis                                              │
 │                                                                   │
 │  license.key  (RS256 JWT, mounted read-only into auth/admin-api)  │
 │                                                                   │
@@ -44,10 +44,23 @@ ships no outbound dependencies except the optional phone-home
 |---|---|---|
 | Postgres      | customer-managed (filesystem encryption / cloud disk) | no app-level DB encryption |
 | Redis         | customer-managed                                        | STM + read-only status cache only — no persistent data |
-| RabbitMQ      | customer-managed                                        | audit event queue; messages ephemeral |
 | tenant settings | **Fernet (AES-128-CBC + HMAC-SHA256)**               | encrypted via `SETTINGS_ENCRYPTION_KEY` at the application layer — the key is in `.env`, rotate by re-keying and re-encrypting (tool shipping in a later version) |
 | license.key   | signed + timestamped, not encrypted                     | contents are not sensitive; signature is verified at every service start + hourly thereafter |
 | backups       | `pg_dump -Fc` + Redis RDB + config; customer-encrypted  | `scripts/backup.sh` produces a tarball; encrypt at the customer's choice of tool |
+
+## Admin audit transport
+
+With the admin audit transport fix, admin-api writes audit rows directly to
+platform-storage over the internal network when `EVENT_BUS_BACKEND` resolves to
+`inprocess`. Separate containers cannot exchange events through a process-local
+bus. RabbitMQ is no longer part of the stack; audit-api remains for broker HTTP
+uploads. Hosted deployments using Pub/Sub retain their consumer delivery path.
+
+Direct writes are awaited but best-effort. Storage failures are logged with
+`dropped=True` and do not block the originating admin operation; there is no
+local queue or automatic retry/backfill. Postgres backups include persisted
+audit rows. Use a service release containing this fix together with this
+installer; see [compatible images and rollout](admin-audit-transport.md).
 
 ## Authentication + authorization
 

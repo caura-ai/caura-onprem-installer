@@ -197,6 +197,28 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Image capability, rather than a guessed minimum version: the first compatible
+# release is not tagged yet. Never bypass this for an old tag or mutable latest.
+_check_admin_audit_transport() {
+  local version="$1" offline="$2" fetch="${3:-true}" image capability
+  if [ "$offline" = "true" ]; then
+    image="memclaw-onprem/platform-admin:$version"  # legacy-name-floor: published offline alias retained for existing air-gap bundles
+    docker image inspect "$image" >/dev/null 2>&1 \
+      || die "--offline: not loaded: $image. Load the paired release tarball with airgap-load.sh." 3
+  else
+    image="ghcr.io/caura-ai/caura-onprem-platform-admin:$version"
+    if [ "$fetch" = "true" ]; then
+      docker pull "$image" >/dev/null \
+        || die "Cannot fetch admin image $image. For an air-gap use upgrade.sh --offline --bundle <bundle.tar.gz> --to <version>. No running service has been changed." 3
+    fi
+  fi
+  capability=$(docker image inspect --format '{{ index .Config.Labels "ai.caura.admin-audit-transport" }}' "$image") \
+    || die "Cannot inspect admin audit capability on $image. No running service has been changed." 3
+  [ "$capability" = "storage-http-inprocess-v1" ] \
+    || die "Admin image $image lacks direct audit persistence (ai.caura.admin-audit-transport=storage-http-inprocess-v1). Obtain a paired service release, or use the installer matching the older release. The broker-free stack has not been started. See docs/admin-audit-transport.md." 1
+}
+
+
 # ── Preflight ───────────────────────────────────────────────────────────────
 log "Preflight checks"
 
@@ -263,6 +285,25 @@ if [ "$FROM_VERSION" = "$TO_VERSION" ]; then
   exit 0
 fi
 
+# A recorded rollback restores the exact prior compose, not today's bundle.
+# Bind the snapshot to its version so arbitrary downgrades cannot bypass the
+# broker-free stack's capability requirement.
+RECORDED_ROLLBACK="false"
+LEGACY_AUDIT_ROLLBACK="false"
+ROLLBACK_SOURCE=""
+_previous_version=$(cat "$CAURA_HOME/.memclaw-prev-version" 2>/dev/null || true)  # legacy-name-floor: on-disk rollback marker used by the shipped CLI
+_snapshot_version=$(cat "$CAURA_HOME/.compose-pre-upgrade/.version" 2>/dev/null || true)
+if [[ "${TO_VERSION#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$ ]] \
+   && [[ "${FROM_VERSION#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$ ]] \
+   && [ "$(printf '%s\n%s\n' "${TO_VERSION#v}" "${FROM_VERSION#v}" | sort -V | head -n 1)" = "${TO_VERSION#v}" ] \
+   && [ "$TO_VERSION" = "$_previous_version" ] && [ "$TO_VERSION" = "$_snapshot_version" ] \
+   && [ -f "$CAURA_HOME/.compose-pre-upgrade/docker-compose.yml" ]; then
+  RECORDED_ROLLBACK="true"
+  if grep -Eq '^[[:space:]]+rabbitmq[[:space:]]*:' "$CAURA_HOME/.compose-pre-upgrade/docker-compose.yml"; then
+    LEGACY_AUDIT_ROLLBACK="true"
+  fi
+fi
+
 # Rough disk check — pg_dump + new images easily eat 10 GB.
 DISK_GB=$(df -BG "$CAURA_HOME" | awk 'NR==2 {sub("G","",$4); print $4}')
 [ "${DISK_GB:-0}" -ge 5 ] \
@@ -287,7 +328,13 @@ cat <<EOF
 EOF
 
 if [ "$DRY_RUN" = "true" ]; then
-  log "Dry-run — no changes applied."
+  if [ "$OFFLINE" = "true" ] && [ "$LEGACY_AUDIT_ROLLBACK" != "true" ]; then
+    _check_admin_audit_transport "$TO_VERSION" true false
+    log "Offline dry-run: loaded admin audit capability verified."
+  elif [ "$LEGACY_AUDIT_ROLLBACK" != "true" ]; then
+    warn "Connected dry-run: admin audit compatibility is unverified; real execution will pull and check it."
+  fi
+  log "Dry-run — no changes applied; no images pulled."
   exit 0
 fi
 
@@ -413,6 +460,18 @@ except Exception as exc:
 }
 _check_db_tls
 
+
+if [ "$LEGACY_AUDIT_ROLLBACK" = "true" ]; then
+  warn "Recorded rollback restores the previous RabbitMQ compose; legacy audit delivery limitations return."
+else
+  _check_admin_audit_transport "$TO_VERSION" "$OFFLINE"
+fi
+if [ "$RECORDED_ROLLBACK" = "true" ]; then
+  ROLLBACK_SOURCE=$(mktemp -d)
+  trap 'rm -rf "$ROLLBACK_SOURCE"' EXIT
+  cp -a "$CAURA_HOME/.compose-pre-upgrade/." "$ROLLBACK_SOURCE/"
+fi
+
 # ── DB backup ───────────────────────────────────────────────────────────────
 BACKUP_PATH=""
 if [ "$SKIP_BACKUP" != "true" ]; then
@@ -450,6 +509,8 @@ echo "$FROM_VERSION" > .memclaw-prev-version
 COMPOSE_SNAPSHOT=".compose-pre-upgrade"
 rm -rf "$COMPOSE_SNAPSHOT"
 mkdir -p "$COMPOSE_SNAPSHOT"
+printf '%s\n' "$FROM_VERSION" > "$COMPOSE_SNAPSHOT/.version"
+[ ! -d nginx ] || cp -a nginx "$COMPOSE_SNAPSHOT/"
 for _cf in docker-compose*.yml; do
   [ -e "$_cf" ] && cp -p "$_cf" "$COMPOSE_SNAPSHOT/"
 done
@@ -457,7 +518,14 @@ done
 # the previous version was running, and an operator recovering by hand needs it.
 
 # ── Refresh bundle + update .env ────────────────────────────────────────────
-if [ -n "$BUNDLE_FILE" ]; then
+if [ "$RECORDED_ROLLBACK" = "true" ]; then
+  log "Restoring the recorded $TO_VERSION compose/nginx snapshot; supplied/download bundle is not applied for this recorded downgrade"
+  cp -p "$ROLLBACK_SOURCE"/*.yml .
+  if [ -d "$ROLLBACK_SOURCE/nginx" ]; then
+    mkdir -p nginx
+    cp -a "$ROLLBACK_SOURCE/nginx/." nginx/
+  fi
+elif [ -n "$BUNDLE_FILE" ]; then
   log "Refreshing bundle (compose / nginx / scripts) from $BUNDLE_FILE"
   tar -xzf "$BUNDLE_FILE" -C . || die "Failed to extract the bundle from $BUNDLE_FILE" 3
 else
@@ -517,6 +585,10 @@ _rollback_pre_up() {
   # earlier, and the next run extracts the bundle again before it builds.
   if [ -d "${COMPOSE_SNAPSHOT:-}" ]; then
     cp -p "$COMPOSE_SNAPSHOT"/*.yml . 2>/dev/null || true
+    if [ -d "$COMPOSE_SNAPSHOT/nginx" ]; then
+      mkdir -p nginx
+      cp -a "$COMPOSE_SNAPSHOT/nginx/." nginx/
+    fi
   fi
 }
 
@@ -530,6 +602,10 @@ _rollback() {
   # before `up -d`, or the old tag is resolved against the new file's images.
   if [ -d "${COMPOSE_SNAPSHOT:-}" ]; then
     cp -p "$COMPOSE_SNAPSHOT"/*.yml . 2>/dev/null || true
+    if [ -d "$COMPOSE_SNAPSHOT/nginx" ]; then
+      mkdir -p nginx
+      cp -a "$COMPOSE_SNAPSHOT/nginx/." nginx/
+    fi
   fi
   if ! docker compose "${COMPOSE_FILES[@]}" up -d; then
     warn "compose up -d during rollback ALSO failed — manual recovery needed."
@@ -615,6 +691,13 @@ else
 fi
 
 log "Rebuilding gateway from bundled nginx template"
+# Check the actual locally selected image after compose pull, without repulling.
+# A changed mutable tag must also pass; restore files/version if it does not.
+if [ "$LEGACY_AUDIT_ROLLBACK" != "true" ] && ! (_check_admin_audit_transport "$TO_VERSION" "$OFFLINE" false); then
+  _rollback_pre_up "admin_audit_transport"
+  die "Admin image compatibility changed after pull; restored prior compose/version. No services were restarted." 1
+fi
+
 docker compose "${COMPOSE_FILES[@]}" build --no-cache gateway || {
   warn "gateway build failed — rolling back"
   _rollback_pre_up "gateway_build_failed"
@@ -725,9 +808,9 @@ fi
 # a shorter valid path.
 #
 # OFFLINE, the route is this same script with the same bundle. The download
-# fallback has nothing to reach, and the CLI's rollback runs upgrade.sh without
-# --offline, so neither is offered. The bundle serves the older version as well:
-# it runs every release since v2.11.16, the first one with an air-gap tarball.
+# fallback has nothing to reach, so it is not offered. A recorded rollback
+# uses its version-bound compose/nginx snapshot; the supplied bundle is retained
+# for input validation and for other targets. Keep the prior images loaded.
 if [ "$OFFLINE" = "true" ]; then
   ROLLBACK_HINT="sudo bash '$SELF' --offline --bundle '$BUNDLE_FILE' --to $FROM_VERSION --memclaw-home '$CAURA_HOME'"  # legacy-name-ok: the install-root flag and variable, named as this script names them
 elif [ -r "$CAURA_HOME/upgrade.sh" ]; then  # legacy-name-ok: the install-root variable, named as its sibling scripts name it

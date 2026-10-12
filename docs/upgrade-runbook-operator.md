@@ -127,7 +127,7 @@ With the floor bumped, manifest-aware nodes (plugin ≥ 2.6.0) auto-upgrade on t
 | **platform-operations** | session-cleanup (5m) + org-hard-delete-sweep (24h), synchronous via platform-admin-api. | **Deferred** on current managed deployments. Needs `PLATFORM_OPERATIONS_INTERNAL_TOKEN` on **both** itself and platform-admin-api; admin-api listens on **:8001** (not the :8101 cloud default). Its image is enterprise → private; make pullable before deploying. |
 | **core-worker** | SaaS pubsub offload for embed/enrich/lifecycle. | **Not used on-prem** — the inprocess bus means core-api handles lifecycle itself. |
 
-**Event bus:** on-prem `EVENT_BUS_BACKEND` is unset → **`inprocess`** (the only backends are `inprocess`/`pubsub`; there is **no** rabbit bus — `RABBITMQ_URL` serves platform-audit, not `common.events`). This is *why* core-worker isn't needed here.
+**Event bus:** on-prem `EVENT_BUS_BACKEND` defaults to **`inprocess`**. With the admin audit transport fix, admin events write directly to platform-storage over HTTP; the separate audit container cannot consume another process's local bus. RabbitMQ is retired. Core lifecycle dispatch remains in-process, which is why core-worker is not needed here.
 
 **Trigger a lifecycle action deterministically** (e.g. to action a reviewed purge at a known state instead of waiting for the aligned tick) — note **core-api has no `curl`**, use python:
 ```bash

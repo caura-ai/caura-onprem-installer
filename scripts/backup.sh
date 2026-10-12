@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Caura on-prem backup script.
 #
-# Dumps Postgres (pg_dump -Fc), snapshots Redis (BGSAVE), and optionally
-# exports RabbitMQ definitions. Bundles everything + the .env +
+# Dumps Postgres (pg_dump -Fc) and snapshots Redis (BGSAVE).
+# Bundles everything + the .env +
 # license.key into a tar.gz under $BACKUP_DIR.
 #
 # Usage:
@@ -42,10 +42,6 @@ for _ in $(seq 1 60); do
   [ "$status" != "$newstatus" ] && break
 done
 docker compose cp redis:/data/dump.rdb "$WORK/redis.rdb"
-
-echo "==> RabbitMQ definitions"
-docker compose exec -T rabbitmq rabbitmqctl export_definitions /tmp/defs.json >/dev/null 2>&1 || true
-docker compose cp rabbitmq:/tmp/defs.json "$WORK/rabbitmq-defs.json" 2>/dev/null || true
 
 echo "==> Bundle config + license"
 cp -a .env "$WORK/.env" 2>/dev/null || true
