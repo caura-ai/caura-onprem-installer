@@ -165,6 +165,7 @@ location ^~ /api/keys {
     auth_request_set $tenant_id $upstream_http_x_tenant_id;
     auth_request_set $user_id $upstream_http_x_user_id;
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $org_read_only_reason $upstream_http_x_org_read_only_reason;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $backend_auth $upstream_http_x_backend_authorization;
@@ -187,6 +188,7 @@ location ^~ /api/keys {
     proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Org-Read-Only-Reason $org_read_only_reason;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
     proxy_set_header X-Agent-Id $agent_id;
@@ -202,6 +204,7 @@ location ^~ /api/agent-keys {
     auth_request_set $tenant_id $upstream_http_x_tenant_id;
     auth_request_set $user_id $upstream_http_x_user_id;
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $org_read_only_reason $upstream_http_x_org_read_only_reason;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $backend_auth $upstream_http_x_backend_authorization;
@@ -224,6 +227,7 @@ location ^~ /api/agent-keys {
     proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Org-Read-Only-Reason $org_read_only_reason;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
     proxy_set_header X-Agent-Id $agent_id;
@@ -249,6 +253,7 @@ location ~ ^/api/(admin|superadmin|orgs|usage|security-audit|tenants|billing)(/|
     auth_request_set $tenant_id $upstream_http_x_tenant_id;
     auth_request_set $user_id $upstream_http_x_user_id;
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $org_read_only_reason $upstream_http_x_org_read_only_reason;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $backend_auth $upstream_http_x_backend_authorization;
@@ -271,6 +276,7 @@ location ~ ^/api/(admin|superadmin|orgs|usage|security-audit|tenants|billing)(/|
     proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Org-Read-Only-Reason $org_read_only_reason;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
     proxy_set_header X-Agent-Id $agent_id;
@@ -293,6 +299,7 @@ location ~ ^/api/v1/(admin|superadmin|billing|usage|orgs)(/|$) {
     auth_request_set $tenant_id $upstream_http_x_tenant_id;
     auth_request_set $user_id $upstream_http_x_user_id;
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $org_read_only_reason $upstream_http_x_org_read_only_reason;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $backend_auth $upstream_http_x_backend_authorization;
@@ -314,6 +321,7 @@ location ~ ^/api/v1/(admin|superadmin|billing|usage|orgs)(/|$) {
     proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Org-Read-Only-Reason $org_read_only_reason;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
     proxy_set_header X-Agent-Id $agent_id;
@@ -332,6 +340,7 @@ location ~ ^/api/(memories|search|recall|entities|relations|fleet|documents|evol
     auth_request_set $user_id $upstream_http_x_user_id;
     auth_request_set $agent_id $upstream_http_x_agent_id;
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $org_read_only_reason $upstream_http_x_org_read_only_reason;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $capabilities $upstream_http_x_capabilities;
@@ -352,6 +361,7 @@ location ~ ^/api/(memories|search|recall|entities|relations|fleet|documents|evol
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Agent-Id $agent_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Org-Read-Only-Reason $org_read_only_reason;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
     proxy_set_header X-Capabilities $capabilities;
@@ -397,6 +407,7 @@ location = /mcp {
     auth_request_set $tenant_id $upstream_http_x_tenant_id;
     auth_request_set $agent_id $upstream_http_x_agent_id;
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $org_read_only_reason $upstream_http_x_org_read_only_reason;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $user_id $upstream_http_x_user_id;
@@ -418,6 +429,7 @@ location = /mcp {
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Agent-Id $agent_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Org-Read-Only-Reason $org_read_only_reason;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
     proxy_set_header X-Capabilities $capabilities;
@@ -436,6 +448,7 @@ location /mcp/ {
     auth_request_set $tenant_id $upstream_http_x_tenant_id;
     auth_request_set $agent_id $upstream_http_x_agent_id;
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $org_read_only_reason $upstream_http_x_org_read_only_reason;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $user_id $upstream_http_x_user_id;
@@ -457,6 +470,7 @@ location /mcp/ {
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Agent-Id $agent_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Org-Read-Only-Reason $org_read_only_reason;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
     proxy_set_header X-Capabilities $capabilities;
@@ -481,6 +495,7 @@ location /api/ {
     auth_request_set $user_id $upstream_http_x_user_id;
     auth_request_set $agent_id $upstream_http_x_agent_id;
     auth_request_set $org_read_only $upstream_http_x_org_read_only;
+    auth_request_set $org_read_only_reason $upstream_http_x_org_read_only_reason;
     auth_request_set $readable_tenant_ids $upstream_http_x_readable_tenant_ids;
     auth_request_set $key_scopes $upstream_http_x_key_scopes;
     auth_request_set $capabilities $upstream_http_x_capabilities;
@@ -501,6 +516,7 @@ location /api/ {
     proxy_set_header X-User-Id $user_id;
     proxy_set_header X-Agent-Id $agent_id;
     proxy_set_header X-Org-Read-Only $org_read_only;
+    proxy_set_header X-Org-Read-Only-Reason $org_read_only_reason;
     proxy_set_header X-Readable-Tenant-IDs $readable_tenant_ids;
     proxy_set_header X-Key-Scopes $key_scopes;
     proxy_set_header X-Capabilities $capabilities;

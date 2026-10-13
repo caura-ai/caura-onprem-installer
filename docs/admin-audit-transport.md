@@ -37,3 +37,19 @@ Postgres backups retain persisted audit rows. Restore accepts older archives,
 restores Postgres/Redis, and ignores legacy RabbitMQ definitions without changing
 the archive. See [day-2 operations](day2-ops.md#retired-broker-artifacts) for
 orphan-container cleanup and offline rollback image/volume preservation.
+
+
+## MCP entitlement reasons
+
+With the paired MCP entitlement fix, auth and the gateway forward an explicit
+read-only reason. Compatible core-api images always enforce missing/expired
+licenses on MCP mutations, while reads remain available. Organization quota
+restrictions follow REST's existing policy, including its update/deletion
+exceptions. The usage rollout flag cannot disable an authoritative reason.
+
+Use updated auth and core images together with this gateway template, and
+rebuild the gateway through the normal upgrade procedure. An old auth/gateway
+or old core retains the prior boolean-only limitation. Verify authorized
+license-expiry and organization-read-only MCP calls and an unrestricted
+follow-up request before accepting the rollout; CI does not verify a customer
+installation. Existing license grace periods and quota thresholds are unchanged.
