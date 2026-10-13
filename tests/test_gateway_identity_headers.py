@@ -33,6 +33,7 @@ IDENTITY = {
     "X-Agent-ID": "x_agent_id",
     "X-Org-Role": "x_org_role",
     "X-Org-Read-Only": "x_org_read_only",
+    "X-Org-Read-Only-Reason": "x_org_read_only_reason",
     "X-Readable-Tenant-IDs": "x_readable_tenant_ids",
     "X-Capabilities": "x_capabilities",
     "X-Key-Scopes": "x_key_scopes",
