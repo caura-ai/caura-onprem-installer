@@ -284,6 +284,13 @@ _APPLY_DEFAULTS = _extract_block(
 )
 
 
+_AUTH_LIMIT_RESOLUTION = _extract_block(
+    "install.sh",
+    "# ── Resolve auth limits after privilege handoff ────────────────────────────",
+    "# ── Auth limits resolved ───────────────────────────────────────────────────",
+)
+
+
 def _resolve_defaults(env: dict[str, str], var: str) -> str:
     return _run_bash(
         f'set -euo pipefail\n{_DEFAULTS}\n{_APPLY_DEFAULTS}\nprintf "%s" "${var}"',
@@ -1408,7 +1415,8 @@ def _resolve(tmp_path: Path, conf: str, var: str, *, env=None, flags=()) -> str:
         "log() { :; }\nwarn() { :; }\ndie() { echo \"DIE: $1\" >&2; exit 1; }\n"
         "usage() { exit 0; }\n"
         f"{_DEFAULTS}\n{_FLAGS_BLOCK}\n{_CONF_BLOCK}\n{_APPLY_DEFAULTS}\n"
-        f'printf "%s" "${var}"'
+        + (_AUTH_LIMIT_RESOLUTION + "\n" if var.startswith("AUTH_RATE_LIMIT_") else "")
+        + f'printf "%s" "${var}"'
     )
     clean = {"PATH": os.environ["PATH"]}
     clean.update(env or {})
@@ -1418,6 +1426,109 @@ def _resolve(tmp_path: Path, conf: str, var: str, *, env=None, flags=()) -> str:
     )
     assert proc.returncode == 0, proc.stderr
     return proc.stdout
+
+
+@pytest.mark.parametrize(
+    ("key", "var", "default"),
+    [("auth_rate_limit_rps", "AUTH_RATE_LIMIT_RPS", "10"),
+     ("auth_rate_limit_burst", "AUTH_RATE_LIMIT_BURST", "20")],
+)
+def test_install_auth_limit_config_and_environment_precedence(tmp_path, key, var, default):
+    fresh = {"CAURA_HOME": str(tmp_path / "fresh")}
+    assert _resolve(tmp_path, "", var, env=fresh) == default
+    assert _resolve(tmp_path, f'{key} = "40"\n', var, env=fresh) == "40"
+    assert _resolve(tmp_path, f'{key} = "40"\n', var, env={**fresh, var: "75"}) == "75"
+    assert _resolve(tmp_path, f'{key} = "40"\n', var, env={**fresh, var: ""}) == "40"
+    # The resolved knob must reach the generated deployment, not just the parser.
+    assert f"{var}=${{{var}}}" in _read("install.sh")
+
+
+@pytest.mark.parametrize(
+    ("key", "var", "default"),
+    [("auth_rate_limit_rps", "AUTH_RATE_LIMIT_RPS", "100"),
+     ("auth_rate_limit_burst", "AUTH_RATE_LIMIT_BURST", "200")],
+)
+@pytest.mark.parametrize("mode", ["--tls-letsencrypt", "--no-tls"])
+def test_letsencrypt_auth_defaults_respect_explicit_tuning(tmp_path, key, var, default, mode):
+    flags = (mode,)
+    fresh = {"CAURA_HOME": str(tmp_path / "fresh")}
+    assert _resolve(tmp_path, "", var, flags=flags, env=fresh) == default
+    assert _resolve(tmp_path, f'{key} = "40"\n', var, flags=flags, env=fresh) == "40"
+    assert _resolve(tmp_path, "", var, env={**fresh, var: "75"}, flags=flags) == "75"
+
+
+@pytest.mark.parametrize("style", ["plain", "quoted", "export"])
+@pytest.mark.parametrize(
+    ("key", "var", "saved"),
+    [("auth_rate_limit_rps", "AUTH_RATE_LIMIT_RPS", "100"),
+     ("auth_rate_limit_burst", "AUTH_RATE_LIMIT_BURST", "200")],
+)
+def test_installer_rerun_preserves_saved_auth_tuning(tmp_path, key, var, saved, style):
+    deployment = tmp_path / "existing"
+    deployment.mkdir()
+    if style == "quoted":
+        content = 'AUTH_RATE_LIMIT_RPS="100" # saved\nAUTH_RATE_LIMIT_BURST=\'200\'\n'
+    elif style == "export":
+        content = ' export AUTH_RATE_LIMIT_RPS = 100\n export AUTH_RATE_LIMIT_BURST = 200\n'
+    else:
+        content = "AUTH_RATE_LIMIT_RPS=100\nAUTH_RATE_LIMIT_BURST=200\n"
+    (deployment / ".env").write_text(content)
+    env = {"CAURA_HOME": str(deployment)}
+    assert _resolve(tmp_path, "", var, env=env) == saved
+    assert _resolve(tmp_path, f'{key} = "40"\n', var, env=env) == "40"
+    assert _resolve(tmp_path, "", var, env={**env, var: "75"}) == "75"
+
+
+def test_installer_never_executes_saved_auth_values(tmp_path):
+    deployment = tmp_path / "existing"
+    deployment.mkdir()
+    marker = tmp_path / "must-not-exist"
+    (deployment / ".env").write_text(
+        f'AUTH_RATE_LIMIT_RPS=\'$(touch "{marker}")\'\nAUTH_RATE_LIMIT_BURST=200\n'
+    )
+    with pytest.raises(AssertionError, match="must be an integer from 1 to 99999"):
+        _resolve(tmp_path, "", "AUTH_RATE_LIMIT_RPS", env={"CAURA_HOME": str(deployment)})
+    assert not marker.exists()
+
+
+def test_existing_pre_limiter_rerun_gets_conservative_defaults(tmp_path):
+    deployment = tmp_path / "existing"
+    deployment.mkdir()
+    (deployment / ".env").write_text("UNRELATED_SETTING=retained\n")
+    env = {"CAURA_HOME": str(deployment)}
+    assert _resolve(tmp_path, "", "AUTH_RATE_LIMIT_RPS", env=env) == "100"
+    assert _resolve(tmp_path, "", "AUTH_RATE_LIMIT_BURST", env=env) == "200"
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_auth_defaults_are_not_exported_before_sudo_handoff(tmp_path, explicit):
+    deployment = tmp_path / "existing"
+    deployment.mkdir()
+    (deployment / ".env").write_text("AUTH_RATE_LIMIT_RPS=100\nAUTH_RATE_LIMIT_BURST=200\n")
+    env = {"PATH": os.environ["PATH"], "CAURA_HOME": str(deployment)}
+    if explicit:
+        env.update(AUTH_RATE_LIMIT_RPS="75", AUTH_RATE_LIMIT_BURST="90")
+    exports = _extract_block(
+        "install.sh",
+        "# Re-export the resolved values so sudo -E preserves them into the child.",
+        "# ── Preflight ──────────────────────────────────────────────────────────────",
+    )
+    result = _run_bash(
+        f"set -euo pipefail\n{_DEFAULTS}\n{_APPLY_DEFAULTS}\n{exports}\n"
+        'printf "%s|%s" "$AUTH_RATE_LIMIT_RPS" "$AUTH_RATE_LIMIT_BURST"',
+        env,
+    )
+    assert result == ("75|90" if explicit else "|")
+
+
+@pytest.mark.parametrize(
+    "key", ["auth_rate_limit_rps", "auth_rate_limit_burst"]
+)
+@pytest.mark.parametrize("value", ["0", "-1", "100000"])
+def test_install_auth_limit_config_is_validated(tmp_path, key, value):
+    with pytest.raises(AssertionError, match="must be an integer from 1 to 99999"):
+        _resolve(tmp_path, f'{key} = "{value}"\n', "AUTH_RATE_LIMIT_RPS",
+                 env={"CAURA_HOME": str(tmp_path / "fresh")})
 
 
 @pytest.mark.parametrize(("key", "var", "flag"), PRECEDENCE_KEYS)

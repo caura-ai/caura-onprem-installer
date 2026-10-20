@@ -56,8 +56,9 @@ location = /onprem-ca.pem {
 #   X-Auth-Mode, X-Caura-Credential-Kind, X-Install-UUID
 # which we then inject into the upstream request so core-api etc. see
 # the auth context + read-only flag (license expiry / org suspension).
-# A location that sends X-Gateway-Secret vouches for all of them, so it
-# sets every one from here, as the hosted gateway does; one it left out
+# A location sending X-Gateway-Secret must neutralize every identity header:
+# core/admin routes set them from here; public auth routes clear them because
+# auth-api authenticates credentials itself. A header left untouched
 # would reach the backend with the client's own value. X-Key-Scopes is
 # the older name for X-Capabilities, still read by core-api as a
 # fallback, so it is set (and so cleared) the same way.
@@ -133,6 +134,25 @@ location = /api/v1/auth/validate { return 404; }
 # in the POST body, not X-API-Key, so the subrequest 401s before the
 # real endpoint ever sees the request.
 location /api/auth/ {
+    # No caller identity is vouched for here; auth-api authenticates itself.
+    proxy_set_header X-Tenant-ID "";
+    proxy_set_header X-User-ID "";
+    proxy_set_header X-Agent-ID "";
+    proxy_set_header X-Org-Role "";
+    proxy_set_header X-Org-Read-Only "";
+    proxy_set_header X-Org-Read-Only-Reason "";
+    proxy_set_header X-Readable-Tenant-IDs "";
+    proxy_set_header X-Capabilities "";
+    proxy_set_header X-Key-Scopes "";
+    proxy_set_header X-Auth-Mode "";
+    proxy_set_header X-Caura-Credential-Kind "";
+    proxy_set_header X-Install-UUID "";
+    limit_req zone=auth_zone burst=${AUTH_RATE_LIMIT_BURST} nodelay;
+    limit_req_status 429;
+    error_page 429 = @auth_rate_limited;
+    proxy_intercept_errors off;
+    # Proof of the gateway hop only: auth-api validates credentials itself.
+    proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     # Belt-and-braces behind the exact-match /validate 404 blocks above:
     # even if a request somehow reached auth-api through this prefix, it
     # could not claim to be the internal auth_request.
@@ -145,6 +165,25 @@ location /api/auth/ {
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 location /api/v1/auth/ {
+    # No caller identity is vouched for here; auth-api authenticates itself.
+    proxy_set_header X-Tenant-ID "";
+    proxy_set_header X-User-ID "";
+    proxy_set_header X-Agent-ID "";
+    proxy_set_header X-Org-Role "";
+    proxy_set_header X-Org-Read-Only "";
+    proxy_set_header X-Org-Read-Only-Reason "";
+    proxy_set_header X-Readable-Tenant-IDs "";
+    proxy_set_header X-Capabilities "";
+    proxy_set_header X-Key-Scopes "";
+    proxy_set_header X-Auth-Mode "";
+    proxy_set_header X-Caura-Credential-Kind "";
+    proxy_set_header X-Install-UUID "";
+    limit_req zone=auth_zone burst=${AUTH_RATE_LIMIT_BURST} nodelay;
+    limit_req_status 429;
+    error_page 429 = @auth_rate_limited;
+    proxy_intercept_errors off;
+    # Proof of the gateway hop only: auth-api validates credentials itself.
+    proxy_set_header X-Gateway-Secret "${GATEWAY_SHARED_SECRET}";
     # Same belt-and-braces as /api/auth/ above.
     proxy_set_header X-Auth-Subrequest "";
     proxy_pass http://$auth_upstream;
@@ -152,6 +191,12 @@ location /api/v1/auth/ {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# A rejected auth burst has an API-shaped response, before any upstream work.
+location @auth_rate_limited {
+    default_type application/json;
+    return 429 '{"detail":"Rate limit exceeded. Try again later.","error":{"code":"RATE_LIMITED","message":"Rate limit exceeded. Try again later."}}';
 }
 
 # ── API-keys + agent-keys aliases. The dashboard calls /api/keys and

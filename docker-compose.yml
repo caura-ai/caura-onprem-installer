@@ -327,6 +327,9 @@ services:
       - "${BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443"
     environment:
       SERVER_NAME: "${PUBLIC_HOSTNAME:-caura.local}"
+      # Per-peer auth budget; raise for a busy shared ingress (see docs/security.md).
+      AUTH_RATE_LIMIT_RPS: "${AUTH_RATE_LIMIT_RPS:-100}"
+      AUTH_RATE_LIMIT_BURST: "${AUTH_RATE_LIMIT_BURST:-200}"
       AUTH_UPSTREAM: platform-auth-api:8020
       ADMIN_UPSTREAM: platform-admin-api:8001
       CORE_UPSTREAM: core-api:8000

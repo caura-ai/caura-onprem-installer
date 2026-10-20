@@ -22,6 +22,22 @@ export CORE_UPSTREAM="${CORE_UPSTREAM:-core-api:8000}"
 export APP_UPSTREAM="${APP_UPSTREAM:-app-frontend:3000}"
 export CLIENT_MAX_BODY_SIZE="${CLIENT_MAX_BODY_SIZE:-16m}"
 
+# Numeric-only values prevent config injection and nginx integer overflow.
+# Retain a finite abuse bound; busy shared ingress can raise both values.
+export AUTH_RATE_LIMIT_RPS="${AUTH_RATE_LIMIT_RPS:-100}"
+export AUTH_RATE_LIMIT_BURST="${AUTH_RATE_LIMIT_BURST:-200}"
+validate_auth_limit() {
+    case "$2" in
+        [1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]|[1-9][0-9][0-9][0-9][0-9]) ;;
+        *)
+            echo "FATAL: $1 must be an integer from 1 to 99999 (no leading zeros)." >&2
+            exit 1
+            ;;
+    esac
+}
+validate_auth_limit AUTH_RATE_LIMIT_RPS "$AUTH_RATE_LIMIT_RPS"
+validate_auth_limit AUTH_RATE_LIMIT_BURST "$AUTH_RATE_LIMIT_BURST"
+
 mkdir -p /etc/nginx/snippets
 rm -f /etc/nginx/conf.d/default.conf
 
@@ -39,7 +55,7 @@ if [ -z "${GATEWAY_SHARED_SECRET:-}" ]; then
 fi
 export GATEWAY_SHARED_SECRET
 
-envsubst '${SERVER_NAME} ${AUTH_UPSTREAM} ${ADMIN_UPSTREAM} ${CORE_UPSTREAM} ${APP_UPSTREAM} ${CLIENT_MAX_BODY_SIZE} ${GATEWAY_SHARED_SECRET}' \
+envsubst '${SERVER_NAME} ${AUTH_UPSTREAM} ${ADMIN_UPSTREAM} ${CORE_UPSTREAM} ${APP_UPSTREAM} ${CLIENT_MAX_BODY_SIZE} ${GATEWAY_SHARED_SECRET} ${AUTH_RATE_LIMIT_RPS} ${AUTH_RATE_LIMIT_BURST}' \
     < /etc/nginx/templates/memclaw-locations.template \
     > /etc/nginx/snippets/memclaw-locations.conf
 
@@ -51,7 +67,7 @@ else
     TEMPLATE="/etc/nginx/templates/memclaw.conf.template"
 fi
 
-envsubst '${SERVER_NAME} ${AUTH_UPSTREAM} ${ADMIN_UPSTREAM} ${CORE_UPSTREAM} ${APP_UPSTREAM} ${CLIENT_MAX_BODY_SIZE} ${GATEWAY_SHARED_SECRET}' \
+envsubst '${SERVER_NAME} ${AUTH_UPSTREAM} ${ADMIN_UPSTREAM} ${CORE_UPSTREAM} ${APP_UPSTREAM} ${CLIENT_MAX_BODY_SIZE} ${GATEWAY_SHARED_SECRET} ${AUTH_RATE_LIMIT_RPS} ${AUTH_RATE_LIMIT_BURST}' \
     < "$TEMPLATE" \
     > /etc/nginx/conf.d/default.conf
 

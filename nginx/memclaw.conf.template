@@ -15,6 +15,19 @@
 # addresses and returning 502s for up to an hour.
 resolver 127.0.0.11 valid=10s ipv6=off;
 
+# Peer-IP auth budget shared by the two auth prefixes. Forwarding headers
+# are client-controlled here; do not use them as the key. Customers behind
+# another proxy share its budget until they configure a trusted ingress chain.
+# This on-prem-only zone must stay in sync across HTTP and TLS variants.
+limit_req_zone $binary_remote_addr zone=auth_zone:10m rate=${AUTH_RATE_LIMIT_RPS}r/s;
+
+# Emit a gateway retry hint only for a local limiter rejection. Keep this
+# header at server level so the named error location inherits TLS HSTS too.
+map $limit_req_status $auth_retry_after {
+    default  "";
+    REJECTED 1;
+}
+
 # ── Backend Authorization for browser (session-cookie) callers ──
 # admin-api's JWTAuthMiddleware requires a Bearer on /admin/*, /orgs/*,
 # /billing/*, /usage/*, /license/* and /keys. Since enterprise 4ff73dd2
@@ -40,5 +53,6 @@ map $backend_auth $effective_authorization {
 
 server {
     listen 80 default_server;
+    add_header Retry-After $auth_retry_after always;
     include /etc/nginx/snippets/memclaw-locations.conf;
 }
