@@ -618,6 +618,70 @@ _rollback() {
   exit 4
 }
 
+_existing_auth_limit() {
+  local _key="$1" _explicit="$2" _saved=""
+  if [ -n "$_explicit" ]; then
+    printf '%s' "$_explicit"
+    return
+  fi
+  case "$_key" in
+    AUTH_RATE_LIMIT_RPS|AUTH_RATE_LIMIT_BURST) ;;
+    *) return 1 ;;
+  esac
+  if [ -f "$CAURA_HOME/.env" ]; then
+    if [ ! -r "$CAURA_HOME/.env" ]; then
+      echo "FATAL: cannot preserve auth limits from existing deployment .env; rerun with permission to read it." >&2
+      return 1
+    fi
+    _saved="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${_key}[[:space:]]*=" "$CAURA_HOME/.env" | tail -1 | cut -d= -f2- || true)"
+    _saved="${_saved#"${_saved%%[![:space:]]*}"}"
+    case "$_saved" in
+      \"*) _saved="${_saved#\"}"; _saved="${_saved%%\"*}" ;;
+      \'*) _saved="${_saved#\'}"; _saved="${_saved%%\'*}" ;;
+      *) _saved="${_saved%%[[:space:]]#*}"; _saved="${_saved%"${_saved##*[![:space:]]}"}" ;;
+    esac
+    if [ -n "$_saved" ]; then
+      log "Preserving $_key from the existing deployment configuration" >&2
+    fi
+  fi
+  printf '%s' "$_saved"
+}
+
+# Warn before rebuilding/restarting a gateway whose refreshed bundle adds this
+# behavior. Existing operator tuning stays in .env; only version keys below
+# are rewritten. Old recorded rollback templates have no zone and skip notice.
+if [ -f nginx/memclaw.conf.template ] && grep -q 'zone=auth_zone' nginx/memclaw.conf.template; then  # legacy-name-ok: shipped template filename
+  for _auth_key in AUTH_RATE_LIMIT_RPS AUTH_RATE_LIMIT_BURST; do
+    if ! _auth_value="$(_existing_auth_limit "$_auth_key" "")"; then
+      _rollback_pre_up "invalid_auth_rate_limit"
+      die "Cannot read $_auth_key from deployment .env; no service was restarted." 2
+    fi
+    # Blank explicitly selects the renderer's default; nonblank must be valid.
+    case "$_auth_value" in
+      ""|[1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]|[1-9][0-9][0-9][0-9][0-9]) ;;
+      *)
+        _rollback_pre_up "invalid_auth_rate_limit"
+        die "Invalid $_auth_key in deployment .env: use an integer from 1 to 99999 without leading zeros; no service was restarted." 2
+        ;;
+    esac
+  done
+  # Upgraded shared-proxy installs get a conservative finite budget only
+  # when a key is absent. Explicit values (including blank/default) survive.
+  if ! grep -Eq '^[[:space:]]*(export[[:space:]]+)?AUTH_RATE_LIMIT_RPS[[:space:]]*=' .env; then
+    printf '\nAUTH_RATE_LIMIT_RPS=100\n' >> .env
+    warn "Auth upgrade default: wrote AUTH_RATE_LIMIT_RPS=100 for existing shared ingress."
+  fi
+  if ! grep -Eq '^[[:space:]]*(export[[:space:]]+)?AUTH_RATE_LIMIT_BURST[[:space:]]*=' .env; then
+    printf '\nAUTH_RATE_LIMIT_BURST=200\n' >> .env
+    warn "Auth upgrade default: wrote AUTH_RATE_LIMIT_BURST=200 for existing shared ingress."
+  fi
+  # The snapshot is the actual pre-refresh config; warn only on first adoption.
+  if ! grep -Eq '^[[:space:]]*limit_req_zone.*zone=auth_zone:' "$COMPOSE_SNAPSHOT/nginx/memclaw.conf.template" 2>/dev/null; then  # legacy-name-ok: shipped template filename
+    warn "Gateway auth rate limiting: this bundle shares a per-peer-IP budget across both auth prefixes (fresh-install defaults: 10 requests/s, burst 20; missing upgrade keys: 100/200)."
+    warn "The gateway is about to be rebuilt/restarted with the limiter. Reverse-proxy/NAT clients share the budget; existing values are retained. For later tuning, edit AUTH_RATE_LIMIT_RPS / AUTH_RATE_LIMIT_BURST in .env, then recreate the gateway from this install directory: docker compose ${COMPOSE_FILES[*]} up -d gateway. See docs/security.md."
+  fi
+fi
+
 # ── Backfill required secrets ───────────────────────────────────────────────
 # GATEWAY_SHARED_SECRET (OSS caura#802): from backend-2.28.0 core-api refuses to
 # start in production without a perimeter for its header-trust auth path. The

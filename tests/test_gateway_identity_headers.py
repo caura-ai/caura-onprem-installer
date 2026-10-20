@@ -46,6 +46,10 @@ IDENTITY = {
 # backend authorizes them on the Authorization header alone.
 NO_IDENTITY = {"location /api/license/"}
 
+# Auth entry proves only the hop and must clear every caller identity header.
+# These routes must never proxy to a header-trusting core/admin backend.
+AUTH_ENTRY = {"location /api/auth/", "location /api/v1/auth/"}
+
 # Requests that must land on a location the first test checks: every spelling
 # of the agent-key routes, and core-api's data and MCP routes.
 CHECKED_PATHS = (
@@ -97,6 +101,15 @@ def test_every_location_that_vouches_for_identity_sets_all_of_it_from_auth() -> 
     gaps = []
     for name, block in _locations().items():
         if VOUCHES not in block:
+            continue
+        if name in AUTH_ENTRY:
+            assert "proxy_pass http://$auth_upstream;" in block
+            assert not _BACKEND.search(block)
+            for header in IDENTITY:
+                assert re.search(
+                    rf'proxy_set_header\s+{re.escape(header)}\s+"";',
+                    block, re.IGNORECASE,
+                ), f"{name}: caller identity {header} is not cleared"
             continue
         if "auth_request /_auth;" not in block:
             gaps.append(f"{name}: vouches for an identity it never resolved")

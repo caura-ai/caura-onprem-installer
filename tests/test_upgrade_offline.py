@@ -167,8 +167,12 @@ def upgrade(tmp_path: Path, compose_services, compose_required_env) -> Run:
         healthy: bool = True,
         audit_capability: bool = True,
         changed_capability: bool = False,
+        existing_auth_limiter: bool = False,
         via: str = "file",
     ) -> tuple[subprocess.CompletedProcess[str], dict[str, Any]]:
+        if existing_auth_limiter:
+            # Pre-refresh snapshot must recognize a limiter already in use.
+            shutil.copy(REPO_ROOT / "nginx/memclaw.conf.template", home / "nginx/memclaw.conf.template")  # legacy-name-ok: shipped filename
         lines = {**env_lines, **(extra_env or {})}
         (home / ".env").write_text(
             "".join(f"{k}={v}\n" for k, v in lines.items()), encoding="utf-8"
@@ -265,6 +269,69 @@ def test_the_upgrade_brings_the_bundle_and_the_secrets_the_release_needs(
     # Without these core-api refuses to start, and an August .env has neither.
     assert r["env"].get("CORE_STORAGE_SHARED_SECRET")
     assert r["env"].get("GATEWAY_SHARED_SECRET")
+
+
+@pytest.mark.parametrize("style", ["plain", "spaces", "export"])
+def test_upgrade_retains_auth_tuning_and_warns_about_shared_ingress(upgrade: Run, style):
+    keys = ["AUTH_RATE_LIMIT_RPS", "AUTH_RATE_LIMIT_BURST"]
+    if style == "spaces":
+        keys = [f" {key} " for key in keys]
+    elif style == "export":
+        keys = [f"export {key}" for key in keys]
+    tuning = dict(zip(keys, ["75", "90"]))
+    proc, result = upgrade(*OFFLINE, loaded=EVERYTHING, extra_env=tuning)
+    assert proc.returncode == 0, proc.stderr
+    assert {key: result["env"][key] for key in tuning} == tuning
+    assert sum("AUTH_RATE_LIMIT_" in key for key in result["env"]) == 2
+    assert "per-peer-IP budget" in proc.stderr
+    assert "AUTH_RATE_LIMIT_RPS / AUTH_RATE_LIMIT_BURST" in proc.stderr
+    assert "existing values are retained" in proc.stderr
+
+
+def test_upgrade_backfills_conservative_missing_auth_limits(upgrade: Run):
+    proc, result = upgrade(*OFFLINE, loaded=EVERYTHING)
+    assert proc.returncode == 0, proc.stderr
+    assert result["env"]["AUTH_RATE_LIMIT_RPS"] == "100"
+    assert result["env"]["AUTH_RATE_LIMIT_BURST"] == "200"
+    assert "wrote AUTH_RATE_LIMIT_RPS=100" in proc.stderr
+    assert "wrote AUTH_RATE_LIMIT_BURST=200" in proc.stderr
+
+
+def test_upgrade_preserves_explicit_blank_auth_defaults(upgrade: Run):
+    tuning = {"AUTH_RATE_LIMIT_RPS": "", "AUTH_RATE_LIMIT_BURST": ""}
+    proc, result = upgrade(*OFFLINE, loaded=EVERYTHING, extra_env=tuning)
+    assert proc.returncode == 0, proc.stderr
+    assert {key: result["env"][key] for key in tuning} == tuning
+    assert "wrote AUTH_RATE_LIMIT" not in proc.stderr
+
+
+@pytest.mark.parametrize("key", ["AUTH_RATE_LIMIT_RPS", "AUTH_RATE_LIMIT_BURST"])
+@pytest.mark.parametrize("value", ["0", "1.5", "01", "100000"])
+def test_invalid_upgrade_auth_limit_stops_before_build_or_restart(upgrade: Run, key, value):
+    proc, result = upgrade(*OFFLINE, loaded=EVERYTHING, extra_env={key: value})
+    assert proc.returncode != 0
+    assert f"Invalid {key} in deployment .env" in proc.stderr
+    assert "invalid_auth_rate_limit" in proc.stderr
+    assert not _compose_calls(result["calls"], "up -d")
+    assert not _compose_calls(result["calls"], "build")
+    assert result["env"]["CAURA_VERSION"] == FROM
+
+
+def test_later_upgrades_validate_limits_without_repeating_rollout_notice(upgrade: Run):
+    proc, result = upgrade(
+        *OFFLINE, loaded=EVERYTHING, existing_auth_limiter=True,
+        extra_env={"AUTH_RATE_LIMIT_RPS": "75", "AUTH_RATE_LIMIT_BURST": "90"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "Gateway auth rate limiting:" not in proc.stderr
+    assert result["env"]["AUTH_RATE_LIMIT_RPS"] == "75"
+    proc, result = upgrade(
+        *OFFLINE, loaded=EVERYTHING, existing_auth_limiter=True,
+        extra_env={"AUTH_RATE_LIMIT_RPS": "0"},
+    )
+    assert proc.returncode != 0
+    assert "invalid_auth_rate_limit" in proc.stderr
+    assert not _compose_calls(result["calls"], "up -d")
 
 
 def test_the_rollback_it_prints_runs_offline_too(upgrade: Run):

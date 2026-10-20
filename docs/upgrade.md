@@ -18,6 +18,40 @@ new one. That is why the manual steps below refresh the bundle too.
 > explicit `-f` overlay files, staging-first validation, and the scheduler
 > images. The flow below is the minimal customer path.
 
+## Gateway auth rate-limit upgrade notice
+
+Bundles containing the auth limiter enable a shared budget on `/api/auth/` and
+`/api/v1/auth/`: the gateway/compose fallback is 100 requests/second per peer IP, burst 200.
+Direct TLS fresh installs explicitly write 10/20.
+Reverse proxies, NAT and source-address translation may combine all users into
+one peer. Before upgrading a busy shared ingress, set `AUTH_RATE_LIMIT_RPS` and
+`AUTH_RATE_LIMIT_BURST` in the deployment's `.env` to an appropriate finite
+budget (integers 1..99999, without leading zeros). `upgrade.sh` retains these
+keys and warns after refreshing a limiter-enabled bundle, before gateway
+rebuild/restart. The notice applies to online and offline upgrades; manual
+upgrade operators should review these values before `docker compose build`.
+
+`install.sh --tls-letsencrypt` always routes through its Caddy sidecar, so all
+clients share one peer budget. For that mode, unspecified settings default to
+100/200 from the installer; explicit env/config values still win. HTTP-only fresh installs and existing pre-limiter reruns also use 100/200;
+other direct TLS fresh installs use 10/20. A manually applied Let's Encrypt overlay does not run the
+installer's default resolution: set an appropriate budget explicitly in `.env`.
+
+For existing installs upgraded by `upgrade.sh`, missing auth-limit keys are
+backfilled as `AUTH_RATE_LIMIT_RPS=100` and `AUTH_RATE_LIMIT_BURST=200`, with a
+notice showing each added value. Existing keys are preserved, including blank
+values (which explicitly select the gateway fallback). Direct TLS fresh installs
+keep 10/20. Manual upgrade operators should set an appropriate finite budget in
+`.env` before rebuilding, rather than relying on the fresh-install fallback.
+
+A fresh install or rerun of `install.sh` regenerates `.env`: existing nonblank
+auth-limit values are preserved unless env/config explicitly overrides them.
+For a fresh install, keep the settings
+as `auth_rate_limit_rps` / `auth_rate_limit_burst` in `install.conf`, or pass the
+uppercase environment variables. Direct TLS fresh installs write 10/20; HTTP-only/Caddy installs and existing
+deployment reruns default to 100/200. See [auth rate limiting
+and proxy caveats](security.md#auth-request-rate-limiting).
+
 ## Supported upgrade path
 
 **Sequential minor versions only.** v1.0.x → v1.1.x, then v1.1.x → v1.2.x.

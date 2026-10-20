@@ -44,6 +44,8 @@ VERSION="1.0.0"
 # Defaults for these six are NOT applied here — see "Apply defaults" below.
 CAURA_HOME="${CAURA_HOME:-${MEMCLAW_HOME:-}}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 CONFIG_FILE=""
+AUTH_RATE_LIMIT_RPS="${AUTH_RATE_LIMIT_RPS:-}"
+AUTH_RATE_LIMIT_BURST="${AUTH_RATE_LIMIT_BURST:-}"
 NON_INTERACTIVE="false"
 OFFLINE="${MEMCLAW_OFFLINE:-}"  # legacy-name-ok: dual-read of the old spelling, which rule 3 keeps working
 OFFLINE="${CAURA_OFFLINE:-$OFFLINE}"
@@ -328,6 +330,8 @@ if [ -n "$CONFIG_FILE" ]; then
     esac
     case "$key" in
       ""|\#*) continue ;;
+      auth_rate_limit_rps)         [ -z "$AUTH_RATE_LIMIT_RPS" ]       && AUTH_RATE_LIMIT_RPS="$raw" ;;
+      auth_rate_limit_burst)       [ -z "$AUTH_RATE_LIMIT_BURST" ]     && AUTH_RATE_LIMIT_BURST="$raw" ;;
       hostname)                    [ -z "$HOSTNAME" ]                  && HOSTNAME="$raw" ;;
       admin_email)                 [ -z "$ADMIN_EMAIL" ]               && ADMIN_EMAIL="$raw" ;;
       admin_password)              [ -z "$ADMIN_PASSWORD" ]            && ADMIN_PASSWORD="$raw" ;;
@@ -420,6 +424,9 @@ export CAURA_HOSTNAME="$HOSTNAME" CAURA_ADMIN_EMAIL="$ADMIN_EMAIL"
 export CAURA_ADMIN_PASSWORD="$ADMIN_PASSWORD" CAURA_ADMIN_PASSWORD_FILE="$ADMIN_PASSWORD_FILE"
 export CAURA_LICENSE="$LICENSE_PATH" CAURA_LICENSE_URL="$LICENSE_URL"
 
+# Only operator inputs cross sudo; defaults are resolved by the final writer.
+export AUTH_RATE_LIMIT_RPS AUTH_RATE_LIMIT_BURST
+
 # ── Preflight ──────────────────────────────────────────────────────────────
 log "Preflight checks"
 _require_explicit_audit_version "$_audit_version_defaulted"
@@ -443,6 +450,63 @@ if ! docker info >/dev/null 2>&1; then
   fi
   die "Cannot reach Docker daemon. Either run as root, add yourself to the docker group (and re-login), or install sudo." 1
 fi
+
+# ── Resolve auth limits after privilege handoff ────────────────────────────
+# Preserve saved numeric tuning on a rerun without sourcing deployment secrets.
+# Explicit environment/config inputs win; only these two keys may be read.
+_existing_auth_limit() {
+  local _key="$1" _explicit="$2" _saved=""
+  if [ -n "$_explicit" ]; then
+    printf '%s' "$_explicit"
+    return
+  fi
+  case "$_key" in
+    AUTH_RATE_LIMIT_RPS|AUTH_RATE_LIMIT_BURST) ;;
+    *) return 1 ;;
+  esac
+  if [ -f "$CAURA_HOME/.env" ]; then
+    if [ ! -r "$CAURA_HOME/.env" ]; then
+      echo "FATAL: cannot preserve auth limits from existing deployment .env; rerun with permission to read it." >&2
+      return 1
+    fi
+    _saved="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${_key}[[:space:]]*=" "$CAURA_HOME/.env" | tail -1 | cut -d= -f2- || true)"
+    _saved="${_saved#"${_saved%%[![:space:]]*}"}"
+    case "$_saved" in
+      \"*) _saved="${_saved#\"}"; _saved="${_saved%%\"*}" ;;
+      \'*) _saved="${_saved#\'}"; _saved="${_saved%%\'*}" ;;
+      *) _saved="${_saved%%[[:space:]]#*}"; _saved="${_saved%"${_saved##*[![:space:]]}"}" ;;
+    esac
+    if [ -n "$_saved" ]; then
+      log "Preserving $_key from the existing deployment configuration" >&2
+    fi
+  fi
+  printf '%s' "$_saved"
+}
+AUTH_RATE_LIMIT_RPS="$(_existing_auth_limit AUTH_RATE_LIMIT_RPS "$AUTH_RATE_LIMIT_RPS")" || exit 1
+AUTH_RATE_LIMIT_BURST="$(_existing_auth_limit AUTH_RATE_LIMIT_BURST "$AUTH_RATE_LIMIT_BURST")" || exit 1
+
+# Caddy/HTTP proxy modes and pre-limiter reruns use a conservative shared budget.
+_auth_default_rps=10
+_auth_default_burst=20
+if [ "$TLS_MODE" = "letsencrypt" ] || [ -z "$TLS_MODE" ] || [ -f "$CAURA_HOME/.env" ]; then
+  _auth_default_rps=100
+  _auth_default_burst=200
+fi
+AUTH_RATE_LIMIT_RPS="${AUTH_RATE_LIMIT_RPS:-$_auth_default_rps}"
+AUTH_RATE_LIMIT_BURST="${AUTH_RATE_LIMIT_BURST:-$_auth_default_burst}"
+validate_auth_limit() {
+    case "$2" in
+        [1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]|[1-9][0-9][0-9][0-9][0-9]) ;;
+        *)
+            echo "FATAL: $1 must be an integer from 1 to 99999 (no leading zeros)." >&2
+            exit 1
+            ;;
+    esac
+}
+validate_auth_limit AUTH_RATE_LIMIT_RPS "$AUTH_RATE_LIMIT_RPS"
+validate_auth_limit AUTH_RATE_LIMIT_BURST "$AUTH_RATE_LIMIT_BURST"
+export AUTH_RATE_LIMIT_RPS AUTH_RATE_LIMIT_BURST
+# ── Auth limits resolved ───────────────────────────────────────────────────
 
 docker compose version >/dev/null 2>&1 || die "docker compose v2 required" 1
 
@@ -813,6 +877,8 @@ MEMCLAW_VERSION=${MEMCLAW_VERSION}
 # stack hasn't moved to yet (phased on-prem parity).
 MEMCLAW_OPS_VERSION=${MEMCLAW_OPS_VERSION:-${MEMCLAW_VERSION}}
 PUBLIC_HOSTNAME=${HOSTNAME}
+AUTH_RATE_LIMIT_RPS=${AUTH_RATE_LIMIT_RPS}
+AUTH_RATE_LIMIT_BURST=${AUTH_RATE_LIMIT_BURST}
 JWT_SECRET=${JWT_SECRET}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 CORE_ADMIN_API_KEY=${CORE_ADMIN_API_KEY}

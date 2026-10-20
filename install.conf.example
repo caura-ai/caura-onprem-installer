@@ -38,6 +38,13 @@ entity_extraction_provider = "none"
 # postgres_db   = "memclaw"
 # postgres_require_ssl = "true"
 
+# Gateway auth budget — peer IP, shared by both auth prefixes. Raise for a
+# busy reverse proxy/NAT; integers 1..99999 without leading zeros.
+# Defaults below apply to direct TLS fresh installs; proxy/HTTP, reruns and the
+# gateway/compose fallback use 100/200.
+# auth_rate_limit_rps = "10"
+# auth_rate_limit_burst = "20"
+
 # Email
 email_provider = "log"                            # log | sendgrid | resend | smtp
 # email_api_key_file = "/run/secrets/sendgrid"
