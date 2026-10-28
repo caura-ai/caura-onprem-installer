@@ -4,6 +4,11 @@
 # Usage:
 #   ./airgap-load.sh                              # auto-detect tarball in cwd
 #   ./airgap-load.sh /path/to/memclaw-onprem-v1.0.0.tar.gz
+#   ./airgap-load.sh --skip-verify <tarball>      # load WITHOUT checking it
+#
+# The tarball's <name>.sha256 and <name>.sha256.sigstore.json, published beside
+# it, must sit beside it here too. Nothing is loaded until cosign has proved
+# that the on-prem release signed that checksum and the tarball matches it.
 #
 # After this completes, `docker compose -f docker-compose.yml \
 # -f docker-compose.airgap.yml up -d` will find every image locally
@@ -29,7 +34,85 @@ gateway_bases() {
     }' "$1"
 }
 
-TARBALL="${1:-}"
+# THE RELEASE THAT BUILT THE TARBALL, proved before anything is loaded. Each
+# on-prem release signs its tarball's checksum keyless: the signing
+# certificate names caura-enterprise's release workflow at the version's
+# onprem-v* tag, and the signature is entered in Sigstore's public
+# transparency log, whose inclusion proof the bundle carries. The checksum and
+# its bundle are published beside the tarball, on the same bucket, so neither
+# is trusted for what it says about itself. The identity is fixed here and
+# completed only with the version being loaded -- an exact match, never a
+# pattern, or an older release's signed tarball would pass as a newer one --
+# and the trusted root is the one this installer ships. Nothing is fetched: an
+# air-gapped host has nothing to fetch from.
+RELEASE_IDENTITY="https://github.com/caura-ai/caura-enterprise/.github/workflows/release-onprem.yml@refs/tags/onprem-"
+OIDC_ISSUER="https://token.actions.githubusercontent.com"
+TRUSTED_ROOT="$(cd "$(dirname "$0")" && pwd)/scripts/sigstore/trusted_root.json"
+
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+verify_release() {
+  local tarball="$1" name version checksum bundle published expected f
+  local named='^[a-z]+-onprem-(v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?)\.tar\.gz$'
+  name=$(basename "$tarball")
+  # The published name is the only place the version comes from, so a renamed
+  # tarball cannot be matched to the release that built it.
+  [[ "$name" =~ $named ]] \
+    || die "$name does not name a release version. Keep the name it was published under: <prefix>-onprem-<version>.tar.gz."
+  version="${BASH_REMATCH[1]}"
+  checksum="${tarball}.sha256"
+  bundle="${checksum}.sigstore.json"
+  published="https://onprem.caura.ai/releases/${version}/"
+  for f in "$checksum" "$bundle"; do
+    [ -f "$f" ] \
+      || die "$(basename "$f") is not beside the tarball. Download it from ${published} with the tarball and keep the three files together. A tarball from before signed releases has neither file: if you have verified it some other way, run this again with --skip-verify. Nothing was loaded."
+  done
+  command -v cosign >/dev/null 2>&1 \
+    || die "cosign is not installed, so the tarball's signature cannot be checked. Install cosign v3 or later (docs/install-airgap.md) and run this again. Nothing was loaded."
+  [ -f "$TRUSTED_ROOT" ] \
+    || die "$TRUSTED_ROOT is missing. It ships in the installer bundle: extract the whole bundle. Nothing was loaded."
+  echo "==> Verifying that the ${version} release signed $name"
+  cosign verify-blob \
+    --new-bundle-format \
+    --trusted-root "$TRUSTED_ROOT" \
+    --bundle "$bundle" \
+    --certificate-identity "${RELEASE_IDENTITY}${version}" \
+    --certificate-oidc-issuer "$OIDC_ISSUER" \
+    "$checksum" >&2 \
+    || die "cosign could not verify $(basename "$checksum") as signed by the ${version} release (its own error is above). Nothing was loaded. Do not use this tarball until you know which of three causes it is: the signature is not that release's; this cosign cannot check it (v3 or later is required); or the Sigstore trusted root this installer ships, $TRUSTED_ROOT, is older than a key Sigstore rotated before the release. For the last, fetch the current installer bundle, https://onprem.caura.ai/bundle.tar.gz, on a connected machine, carry it across and run its airgap-load.sh."
+  # The first field of the first line: a bare hash, as the release writes
+  # it, or sha256sum's "<hash>  <name>". cosign verified the whole file.
+  expected=$(awk 'NR == 1 { print $1 }' "$checksum")
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] \
+    || die "$(basename "$checksum") does not hold one SHA-256 checksum. Nothing was loaded."
+  [ "$(sha256_of "$tarball")" = "$expected" ] \
+    || die "$name does not match its signed checksum: it is damaged or is not the published tarball. Nothing was loaded."
+  echo "==> $name is the ${version} release's tarball"
+}
+
+SKIP_VERIFY=false
+TARBALL=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skip-verify) SKIP_VERIFY=true; shift ;;
+    -*) die "unknown option $1. Usage: $0 [--skip-verify] [path/to/<tarball>.tar.gz]" ;;
+    *)
+      [ -z "$TARBALL" ] || die "one tarball at a time"
+      TARBALL="$1"
+      shift ;;
+  esac
+done
 if [ -z "$TARBALL" ]; then
   TARBALL=$(ls -1 memclaw-onprem-*.tar.gz 2>/dev/null | head -n1 || true)
 fi
@@ -37,6 +120,19 @@ if [ -z "$TARBALL" ] || [ ! -f "$TARBALL" ]; then
   echo "ERROR: tarball not found." >&2
   echo "Usage: $0 [path/to/memclaw-onprem-<version>.tar.gz]" >&2
   exit 1
+fi
+
+if [ "$SKIP_VERIFY" = true ]; then
+  {
+    echo ""
+    echo "WARNING: --skip-verify: loading $TARBALL WITHOUT checking that the"
+    echo "WARNING: on-prem release built it. Whoever could replace this file could"
+    echo "WARNING: have replaced every image in it. Use this only for a tarball"
+    echo "WARNING: you have verified some other way."
+    echo ""
+  } >&2
+else
+  verify_release "$TARBALL"
 fi
 
 # Gateway tags and the image each points at, one "tag id" pair per line.

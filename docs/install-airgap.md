@@ -28,8 +28,14 @@ tarball; see [admin audit transport](admin-audit-transport.md).
 - The Caura-issued `license.key` file.
 - The release tarball:
   - `memclaw-onprem-<version>.tar.gz` (images, ≈2 GB compressed)
+  - Its checksum and that checksum's signature, from the same folder
+    (`https://onprem.caura.ai/releases/<version>/`): `<tarball>.sha256` and
+    `<tarball>.sha256.sigstore.json`. Keep all three files together.
   - The bundle repo contents (`docker-compose.yml`, `install.sh`, etc. —
     text-only, KB-sized)
+- [cosign](https://github.com/sigstore/cosign/releases) v3 or later, on the
+  VM's `PATH`. Download it on the connected machine from Sigstore's own
+  release page, check it as that page describes, and copy the binary across.
 
 Transfer both to the VM however you prefer (SCP over an internal bastion,
 USB, physical media).
@@ -49,6 +55,54 @@ USB, physical media).
 
 The script auto-detects `memclaw-onprem-*.tar.gz` in the current directory
 if you don't pass a path.
+
+### Checking that the release built the tarball
+
+`airgap-load.sh` loads nothing until it has checked the tarball. The release
+signs the tarball's checksum with Sigstore's keyless signing, and the script:
+
+1. reads the version from the tarball's name, so keep the published name;
+2. runs `cosign verify-blob` on `<tarball>.sha256` with its
+   `.sha256.sigstore.json` bundle. The signer must be exactly
+   `https://github.com/caura-ai/caura-enterprise/.github/workflows/release-onprem.yml@refs/tags/onprem-<version>`,
+   issued by `https://token.actions.githubusercontent.com`. Verification works
+   offline: it uses the bundle's transparency-log proof and the Sigstore
+   trusted root this bundle ships in `scripts/sigstore/trusted_root.json`,
+   never one downloaded with the tarball;
+3. compares the tarball's SHA-256 with that signed checksum.
+
+Any failure stops before `docker load` and says which check failed: a
+missing file, no cosign, a signature from anything but that release, or a
+tarball that does not match. Do not use a tarball that fails.
+
+What this protects, and what it does not: it proves the tarball is the one
+the release built, whoever could replace files in the release folder. The
+check itself -- `airgap-load.sh` and `scripts/sigstore/trusted_root.json` --
+arrives in the installer bundle from `onprem.caura.ai`, and nothing here
+verifies that bundle. Fetch the bundle over HTTPS from `onprem.caura.ai` or
+get it from Caura by another route you trust, and keep the tarball and its
+two files in a directory only you can write, so nothing can swap the
+tarball between the check and the load.
+
+The same check by hand, on the connected machine, with `<tarball>` and
+`<version>` replaced by the real file name and version:
+
+```bash
+cosign verify-blob <tarball>.sha256 \
+  --bundle <tarball>.sha256.sigstore.json \
+  --certificate-identity "https://github.com/caura-ai/caura-enterprise/.github/workflows/release-onprem.yml@refs/tags/onprem-<version>" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+echo "$(awk 'NR == 1 { print $1 }' <tarball>.sha256)  <tarball>" | sha256sum -c -
+```
+
+Tarballs from before signed releases have no bundle. To load one, or any
+tarball you have verified some other way, pass `--skip-verify`:
+
+```bash
+./airgap-load.sh --skip-verify /path/to/<tarball>.tar.gz
+```
+
+It loads without checking and prints a warning saying so.
 
 ### The gateway's base image
 

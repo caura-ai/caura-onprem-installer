@@ -9,6 +9,8 @@ nothing said so.
 from __future__ import annotations
 
 import functools
+import gzip
+import hashlib
 import json
 import os
 import shutil
@@ -103,3 +105,111 @@ def compose_services() -> Callable[..., dict[str, Any]]:
         return services
 
     return render
+
+
+# -- The release signature airgap-load.sh checks -------------------------------
+#
+# The on-prem release signs each tarball's checksum keyless, as
+# caura-enterprise's release-onprem.yml at the version's onprem-v* tag. Tests
+# cannot mint that certificate, so a stand-in for cosign models what the real
+# check decides: a bundle verifies only for the identity, issuer and bytes it
+# was made for, against a trusted root that exists. Flags it does not know --
+# an identity regexp, skipping the transparency log -- are refused.
+
+RELEASE_IDENTITY = (
+    "https://github.com/caura-ai/caura-enterprise/.github/workflows/"
+    "release-onprem.yml@refs/tags/onprem-"
+)
+OIDC_ISSUER = "https://token.actions.githubusercontent.com"
+
+_FAKE_COSIGN = r"""#!/usr/bin/env python3
+import hashlib, json, os, sys
+args = sys.argv[1:]
+with open(os.environ["COSIGN_LOG"], "a") as log:
+    log.write(json.dumps(args) + "\n")
+if not args or args[0] != "verify-blob":
+    sys.exit("only verify-blob")
+values = {"--bundle", "--certificate-identity", "--certificate-oidc-issuer", "--trusted-root"}
+opts, blobs, i = {}, [], 1
+while i < len(args):
+    if args[i] in values:
+        opts[args[i]] = args[i + 1]
+        i += 2
+    elif args[i] == "--new-bundle-format":
+        i += 1
+    elif args[i].startswith("-"):
+        sys.exit("unexpected flag " + args[i])
+    else:
+        blobs.append(args[i])
+        i += 1
+if set(opts) != values or len(blobs) != 1:
+    sys.exit("incomplete verification")
+if not os.path.isfile(opts["--trusted-root"]):
+    sys.exit("no trusted root")
+with open(opts["--bundle"]) as f:
+    bundle = json.load(f)
+with open(blobs[0], "rb") as f:
+    digest = hashlib.sha256(f.read()).hexdigest()
+signed = {
+    "identity": opts["--certificate-identity"],
+    "issuer": opts["--certificate-oidc-issuer"],
+    "sha256": digest,
+}
+sys.exit(0 if bundle == signed else "signature does not verify")
+"""
+
+
+def fake_cosign(directory: Path) -> Path:
+    """A bin directory holding the stand-in ``cosign``; it logs to $COSIGN_LOG."""
+    bin_dir = directory / "cosign-bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    fake = bin_dir / "cosign"
+    fake.write_text(_FAKE_COSIGN, encoding="utf-8")
+    fake.chmod(0o755)
+    return bin_dir
+
+
+@pytest.fixture
+def cosign_bin(tmp_path: Path) -> Path:
+    return fake_cosign(tmp_path)
+
+
+def signed_release(
+    directory: Path,
+    version: str,
+    *,
+    payload: bytes | None = None,
+    identity: str | None = None,
+    issuer: str = OIDC_ISSUER,
+    prefix: str = "caura-onprem",
+) -> Path:
+    """A release tarball with its checksum and that checksum's bundle, as published."""
+    directory.mkdir(parents=True, exist_ok=True)
+    if payload is None:
+        payload = gzip.compress(b"images", mtime=0)
+    tarball = directory / f"{prefix}-{version}.tar.gz"
+    tarball.write_bytes(payload)
+    checksum = tarball.with_name(tarball.name + ".sha256")
+    checksum.write_text(hashlib.sha256(payload).hexdigest() + "\n", encoding="utf-8")
+    bundle = checksum.with_name(checksum.name + ".sigstore.json")
+    bundle.write_text(
+        json.dumps(
+            {
+                "identity": identity or RELEASE_IDENTITY + version,
+                "issuer": issuer,
+                "sha256": hashlib.sha256(checksum.read_bytes()).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    return tarball
+
+
+def installer_files(dest: Path) -> None:
+    """airgap-load.sh and the trusted root it verifies with, as the bundle ships them."""
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO_ROOT / "airgap-load.sh", dest)
+    root = REPO_ROOT / "scripts/sigstore/trusted_root.json"
+    if root.exists():
+        (dest / "scripts/sigstore").mkdir(parents=True, exist_ok=True)
+        shutil.copy(root, dest / "scripts/sigstore/trusted_root.json")
