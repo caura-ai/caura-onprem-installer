@@ -34,6 +34,26 @@ def test_console_scripts_share_the_click_group():
     assert f"memclawctl = {entrypoint}" in scripts  # legacy-name-ok: permanent console-script alias, which rule 3 keeps working
 
 
+def test_plugin_install_url_handles_a_private_environment(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_mod, "DEFAULT_HOME", tmp_path)
+    env_file = tmp_path / ".env"
+    env_file.write_text("PUBLIC_HOSTNAME=operator.example.com\n")
+    original_read = Path.read_text
+
+    def read_text(path, *args, **kwargs):
+        if path == env_file:
+            raise PermissionError("synthetic private file")
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    result = CliRunner().invoke(cli, ["plugin", "install-url", "--fleet-id", "prod"])
+    assert result.exit_code == 0
+    assert "http://<YOUR_HOST>" in result.output
+    assert ".env is private" in result.output
+    assert "--api-url" in result.output and "sudo" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_cli_help_lists_commands():
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
@@ -244,8 +264,13 @@ def test_setup_reports_api_key(monkeypatch, tmp_path: Path):
     runner = CliRunner()
     license_file = tmp_path / "license.key"
     license_file.write_text("eyJhbGc.stub.sig")
+    token_file = tmp_path / "setup-token"
+    token_file.write_text("a" * 64)
+    monkeypatch.setenv("SETUP_TOKEN_FILE", str(token_file))
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if "/setup/status" in str(request.url):
+            return httpx.Response(200, json={"admin_exists": False, "license_loaded": False})
         if "/setup/license" in str(request.url):
             return httpx.Response(200, json={"ok": True})
         if "/setup/admin" in str(request.url):

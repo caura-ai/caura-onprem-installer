@@ -14,6 +14,8 @@ nginx/tls/*.key
 # Install artifacts
 install-result.json
 install.state.json
+/setup-token
+/setup-token.*
 /opt/memclaw
 
 # Air-gap tarballs

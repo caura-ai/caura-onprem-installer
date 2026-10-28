@@ -35,7 +35,7 @@ def _serializer() -> str:
     ],
 )
 def test_setup_payload_round_trips_credentials_without_json_injection(password):
-    values = ["admin@acme.example", password, 'Acme "Corp"', "signed-license-proof\n"]
+    values = ["admin@acme.example", password, 'Acme "Corp"', "signed-license-proof\n", "a" * 64]
     result = subprocess.run(
         ["bash", "-c", _serializer() + '\nsetup_admin_payload "$@"', "setup", *values],
         check=True,
@@ -43,7 +43,7 @@ def test_setup_payload_round_trips_credentials_without_json_injection(password):
         text=True,
     )
     assert json.loads(result.stdout) == dict(
-        zip(("email", "password", "org_name", "license_key"), values, strict=True)
+        zip(("email", "password", "org_name", "license_key", "setup_token"), values, strict=True)
     )
 
 

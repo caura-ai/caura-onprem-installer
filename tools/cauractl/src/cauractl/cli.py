@@ -116,6 +116,13 @@ def status(ctx: click.Context) -> None:
     help="12+ characters with an uppercase letter and a digit; prefer --password-stdin.",
 )
 @click.option("--org-name", required=True)
+@click.option(
+    "--setup-token-file",
+    default=lambda: str(DEFAULT_HOME / "setup-token"),
+    envvar="SETUP_TOKEN_FILE",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Host setup token file (default: install root/setup-token).",
+)
 @click.pass_context
 def setup(
     ctx: click.Context,
@@ -124,13 +131,24 @@ def setup(
     password_stdin: bool,
     password: str | None,
     org_name: str,
+    setup_token_file: Path,
 ) -> None:
     """First-run setup: upload license + create the first admin."""
     pw = _resolve_password(password, password_stdin)
+    try:
+        setup_token = setup_token_file.read_text().strip()
+    except (OSError, UnicodeError):
+        raise click.ClickException("Cannot read host setup token file.") from None
+    if not 32 <= len(setup_token) <= 256:
+        raise click.ClickException("Invalid host setup token file.")
 
     with _client(ctx.obj["url"], None) as c:  # /setup/* is unauthenticated
         key = Path(license_path).read_text().strip()
-        _post(c, "/api/setup/license", {"license_key": key})
+        state = _get_json(c, "/api/setup/status")
+        if state.get("admin_exists"):
+            raise click.ClickException("Setup has already completed.")
+        if not state.get("license_loaded"):
+            _post(c, "/api/setup/license", {"license_key": key, "setup_token": setup_token})
 
         resp = _post(
             c,
@@ -140,6 +158,7 @@ def setup(
                 "password": pw,
                 "org_name": org_name,
                 "license_key": key,
+                "setup_token": setup_token,
             },
         )
     console.print(
@@ -351,7 +370,15 @@ def plugin_install_url(fleet_id: str, api_url: str | None, api_key: str | None) 
     if not api_url:
         env_file = DEFAULT_HOME / ".env"
         if env_file.is_file():
-            for line in env_file.read_text().splitlines():
+            try:
+                env_lines = env_file.read_text().splitlines()
+            except OSError:
+                console.print(
+                    "[yellow].env is private or unreadable; pass --api-url "
+                    "or run as its owner with sudo.[/yellow]"
+                )
+                env_lines = []
+            for line in env_lines:
                 if line.startswith("PUBLIC_HOSTNAME="):
                     host = line.split("=", 1)[1].strip().strip('"').strip("'")
                     if host:

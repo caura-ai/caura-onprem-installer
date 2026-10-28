@@ -19,6 +19,17 @@ Schedule via cron:
 
 ## Restore
 
+The default backup/restore scripts do not include the separate private
+`setup-token`. Preserve it separately using authorized root/service-owner
+access, or recreate and prepare it before restore. With the file-delivery bundle,
+`restore.sh` stops before database changes if the proof is missing, symlinked,
+or nonregular and points to the recovery procedure. Rerun restore after repair.
+The compatible auth image bind-mounts this file read-only and refuses a missing
+source. Use [the proof-file recovery procedure](troubleshooting.md#missing-setup-token-bind-source)
+for its mode-0600/appuser ownership requirements. Recreating this first-run proof
+does not rotate database passwords, `.env` credentials or the license. Restores
+of older releases must use their matching Compose bundle.
+
 ```bash
 # Data only (.env + license preserved):
 ./scripts/restore.sh /path/to/memclaw-backup-<ts>.tar.gz
@@ -27,6 +38,7 @@ Schedule via cron:
 ./scripts/restore.sh --replace-config /path/to/memclaw-backup-<ts>.tar.gz
 docker compose restart
 ```
+
 
 ## Logs
 

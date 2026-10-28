@@ -348,3 +348,37 @@ named volume until the rollback window closes; the new image tarball does not
 carry it. Do not add `--remove-orphans` during the upgrade. See
 [retired broker artifacts](day2-ops.md#retired-broker-artifacts) for deliberate
 container cleanup after verifying the upgrade.
+
+## Host setup proof release
+
+First release an auth image advertising `ai.caura.setup-proof=file-v1`, then
+publish the matching installer bundle and CLI. The bundle must include both
+`scripts/setup-token.sh` and `scripts/setup_token.py`. Local bundles missing a
+required helper are refused before backup or refresh; an unsupported auth image
+or failed proof preparation restores the previous version/Compose files before
+service restart.
+
+The installer retains a separate private `setup-token` file and mounts it
+read-only into auth-api. A network-disabled, non-logging helper prepares only
+that file as the auth image's actual appuser UID/GID. No setup proof is added
+to `.env`, and its permission/ownership and existing handling are unchanged.
+Configuration-managed environment files and non-owner Compose operators do not
+need a new environment-file permission policy. Only reading the private proof
+for browser/CLI setup requires authorized root/service-owner access.
+
+Dry-run and recorded rollback do not create a new proof. Compatible forward
+upgrades backfill missing proof, including incomplete installations. Manual
+installs need an explicit file mount and container setting, or the existing
+environment-token alternative. Completed installs need no database migration.
+See [host proof and first-run clients](setup-host-proof.md).
+
+### Missing setup-token after a manual refresh or restore
+
+The new auth-api mount uses `create_host_path: false`. A direct
+`docker compose up -d` with a missing `setup-token` fails with a bind-source
+error until the private file exists and is prepared for the auth image's UID.
+Automatic installation and forward upgrade handle this, but a same-version
+upgrade is a no-op. For a hand-refreshed Compose file, restored tree or deleted
+proof, follow [the targeted recovery procedure](troubleshooting.md#missing-setup-token-bind-source)
+before retrying Compose. That procedure preserves `.env` and other credentials;
+an arbitrary empty file or world-readable token is not a recovery.

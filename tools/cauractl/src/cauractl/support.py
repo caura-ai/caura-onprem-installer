@@ -78,16 +78,24 @@ MAX_FILE_BYTES = 50 * 1024 * 1024  # 50 MiB
 _JSON_FIELD_REDACT = re.compile(
     r'("(?:password|api_key|admin_key|jwt_secret|jwt|secret|token|authorization|'
     r"cookie|settings_encryption_key|openai_api_key|anthropic_api_key|gemini_api_key|"
-    r"postgres_password|github_client_secret|email_api_key|smtp_password|license_key|"
-    r'license|phone_home_url|x-license-signature)"\s*:\s*)"[^"]*"',
+    r"postgres_password|github_client_secret|email_api_key|smtp_password|license_key|setup_token|"
+    r'license|phone_home_url|x-license-signature)"\s*:\s*)"(?:\\.|[^"\\])*"',
     re.IGNORECASE,
 )
 
-_ENV_LINE_REDACT = re.compile(
-    r"^(JWT_SECRET|POSTGRES_PASSWORD|CORE_ADMIN_API_KEY|SETTINGS_ENCRYPTION_KEY|"
+_SECRET_ENV_KEYS = (
+    r"JWT_SECRET|POSTGRES_PASSWORD|CORE_ADMIN_API_KEY|SETTINGS_ENCRYPTION_KEY|SETUP_TOKEN|"
+    r"GATEWAY_SHARED_SECRET|CORE_STORAGE_SHARED_SECRET|"
     r"OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY|"
     r"PLATFORM_LLM_API_KEY|PLATFORM_EMBEDDING_API_KEY|"
-    r"GITHUB_CLIENT_SECRET|EMAIL_API_KEY|SMTP_PASSWORD)=.*$",
+    r"GITHUB_CLIENT_SECRET|EMAIL_API_KEY|SMTP_PASSWORD"
+)
+_ENV_LINE_REDACT = re.compile(
+    rf"^({_SECRET_ENV_KEYS})=.*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_YAML_LINE_REDACT = re.compile(
+    rf'''^([ \t]*["']?(?:{_SECRET_ENV_KEYS})["']?[ \t]*:[ \t]*)[^\r\n]*?(,?)[ \t]*$''',
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -124,6 +132,8 @@ def _redact(blob: bytes) -> bytes:
     text = _JSON_FIELD_REDACT.sub(r'\1"***"', text)
     text = _ENV_LINE_REDACT.sub(lambda m: m.group(0).split("=", 1)[0] + "=***", text)
     text = _GENERIC_TOKEN_REDACT.sub("***", text)
+    # Preserve a trailing comma when a YAML-style field is a pretty JSON line.
+    text = _YAML_LINE_REDACT.sub(r'\1"***"\2', text)
     return text.encode("utf-8", errors="replace")
 
 
@@ -325,9 +335,17 @@ def build_bundle(
             # ── redacted .env snapshot (for config triage) ──────────
             env_file = home / ".env"
             if env_file.is_file():
-                _tar_add_bytes(
-                    tar, "config/env.redacted", _redact(env_file.read_bytes())
-                )
+                try:
+                    redacted_env = _redact(env_file.read_bytes())
+                except OSError:
+                    _tar_add_bytes(
+                        tar,
+                        "config/env.read-error.txt",
+                        b"Deployment .env is private or unreadable; run as its "
+                        b"owner or with sudo to include a redacted config snapshot.\n",
+                    )
+                else:
+                    _tar_add_bytes(tar, "config/env.redacted", redacted_env)
 
             # ── manifest ────────────────────────────────────────────
             manifest = {

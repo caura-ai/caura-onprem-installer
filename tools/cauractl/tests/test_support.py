@@ -36,6 +36,16 @@ def test_redact_strips_json_password_field():
     assert '"other":"keep"' in out
 
 
+@pytest.mark.parametrize("key", ["jwt_secret", "SETUP_TOKEN", "GATEWAY_SHARED_SECRET"])
+def test_redact_preserves_pretty_json_structure(key):
+    blob = json.dumps(
+        {key: "synthetic-sensitive-value", "other": "keep"}, indent=2
+    ).encode()
+    redacted = _redact(blob)
+    assert json.loads(redacted) == {key: "***", "other": "keep"}
+    assert b"synthetic-sensitive-value" not in redacted
+
+
 def test_redact_strips_all_sensitive_json_fields():
     # Keep the list in sync with _JSON_FIELD_REDACT in support.py
     fields = [
@@ -654,3 +664,66 @@ def test_self_version_is_unknown_when_neither_is_installed(monkeypatch):
 
     monkeypatch.setattr("importlib.metadata.version", fake_version)
     assert support._self_version() == "unknown"
+
+
+@pytest.mark.parametrize("payload", ['SETUP_TOKEN={token}\n', '{{"setup_token":"{token}"}}'])
+def test_setup_host_proof_is_redacted(payload):
+    token = "c" * 64
+    assert token.encode() not in _redact(payload.format(token=token).encode())
+
+
+def test_support_bundle_excludes_host_setup_proof(fake_home, tmp_path, monkeypatch):
+    token = "d" * 64
+    (fake_home / "setup-token").write_text(token)
+    with (fake_home / ".env").open("a") as env_file:
+        env_file.write(f"SETUP_TOKEN={token}\n")
+    # No host/docker commands are needed to check this collection boundary.
+    monkeypatch.setattr(
+        "cauractl.support._run",
+        lambda cmd, **kwargs: (
+            0,
+            f"services:\n  auth:\n    environment:\n      SETUP_TOKEN: {token}\n".encode()
+            if cmd == ["docker", "compose", "config"]
+            else b"synthetic host state\n",
+        ),
+    )
+    bundle = build_bundle(fake_home, tmp_path / "proof-bundle", include_compose_state=True)
+    with tarfile.open(bundle, "r:gz") as archive:
+        assert not any(name.endswith("setup-token") for name in archive.getnames())
+        for member in archive.getmembers():
+            if member.isfile():
+                assert token.encode() not in _extract(archive, member.name)
+
+
+def test_support_bundle_handles_a_private_environment(fake_home, tmp_path, monkeypatch):
+    env_file = fake_home / ".env"
+    original_read = Path.read_bytes
+
+    def read_bytes(path):
+        if path == env_file:
+            raise PermissionError("synthetic private file")
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setattr("cauractl.support._run", lambda *args, **kwargs: (0, b"host state"))
+    bundle = build_bundle(fake_home, tmp_path / "private-env-bundle")
+    with tarfile.open(bundle, "r:gz") as archive:
+        assert "config/env.redacted" not in archive.getnames()
+        message = _extract(archive, "config/env.read-error.txt")
+        assert b"private" in message and b"owner" in message and b"sudo" in message
+
+
+def test_host_proof_redaction_consumes_json_escapes():
+    value = 'private-proof-prefix-' + 'a' * 32 + '"private-proof-suffix'
+    redacted = _redact(json.dumps({"setup_token": value}).encode())
+    assert b"private-proof-prefix" not in redacted
+    assert b"private-proof-suffix" not in redacted
+    assert json.loads(redacted)["setup_token"] == "***"
+
+
+@pytest.mark.parametrize("key", ["SETUP_TOKEN", "JWT_SECRET", "POSTGRES_PASSWORD"])
+@pytest.mark.parametrize("quotes", ["", '"', "'"])
+def test_compose_yaml_redacts_proof_and_service_secrets(key, quotes):
+    token = "e" * 64
+    payload = f"      {key}: {quotes}{token}{quotes}\n".encode()
+    assert token.encode() not in _redact(payload)

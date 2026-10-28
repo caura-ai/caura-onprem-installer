@@ -87,16 +87,22 @@ There are two ways, both hitting the same first-run bootstrap:
 
 - **Web wizard (interactive):** after a zero-config install (or
   `--skip-admin`), open `/setup` in a browser, upload the license, and
-  create the first admin there.
+  create the first admin there. Supply the host token from the private
+  `setup-token` file printed by the installer.
 - **API call (automated):** passing `--admin-email` + `--admin-password`
   to `install.sh` makes it `POST /api/setup/admin` for you. You can also
-  call it directly:
+  use the host CLI. Set `CAURA_HOME` to the install directory and choose a private password
+  file. Resolve the CLI path before sudo, which can reset PATH:
 
   ```bash
-  curl -sk -X POST https://$PUBLIC_HOSTNAME/api/setup/admin \
-    -H 'Content-Type: application/json' \
-    -d '{"email":"admin@yourcompany.com","password":"<strong>","org_name":"yourorg"}'
-  # → {"ok":true,"org_id":"…","tenant_id":"…","api_key":"mc_…"}
+  CAURA_HOME=/your/install/directory
+  CAURACTL_BIN="$(command -v cauractl)"
+  ADMIN_PASSWORD_FILE=/private/admin-password
+  sudo "$CAURACTL_BIN" --url "https://$PUBLIC_HOSTNAME" setup \
+    --license "$CAURA_HOME/license/license.key" \
+    --setup-token-file "$CAURA_HOME/setup-token" \
+    --email admin@yourcompany.com --org-name yourorg --password-stdin \
+    < "$ADMIN_PASSWORD_FILE"
   ```
 
   The returned `api_key` is shown **once** — store it. Use a real email
@@ -104,7 +110,8 @@ There are two ways, both hitting the same first-run bootstrap:
 
 This endpoint is a **one-time bootstrap**: once an admin exists, the whole
 `/setup/*` surface returns `404`, so it cannot be re-run. The trust anchor
-is possession of the license file plus being first to call it.
+is possession of the installed license and the host setup token. See
+[host proof and rollout](setup-host-proof.md).
 
 ## Verifying the install
 

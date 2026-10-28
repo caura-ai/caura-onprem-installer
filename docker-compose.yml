@@ -76,6 +76,7 @@ services:
       PLATFORM_STORAGE_API_URL: http://platform-storage-api:8003
       JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env (32+ chars)}"
       LICENSE_FILE: /etc/memclaw/license.key
+      SETUP_TOKEN_FILE: /run/caura/setup-token
       EMAIL_PROVIDER: "${EMAIL_PROVIDER:-log}"
       EMAIL_API_KEY: "${EMAIL_API_KEY:-}"
       EMAIL_FROM: "${EMAIL_FROM:-noreply@${PUBLIC_HOSTNAME:-caura.local}}"
@@ -99,6 +100,12 @@ services:
       # 404 so no untrusted code can overwrite the file.
       - ./license:/etc/memclaw
       - ./logs/platform-auth-api:/var/log/memclaw/platform-auth-api
+      - type: bind
+        source: ./setup-token
+        target: /run/caura/setup-token
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       platform-storage-api:
         condition: service_healthy
