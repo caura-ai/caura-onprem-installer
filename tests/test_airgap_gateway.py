@@ -26,6 +26,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import fake_cosign, installer_files, signed_release
 
 pytestmark = [pytest.mark.unit]
 
@@ -209,10 +210,12 @@ def _airgap_load(
 ) -> tuple[subprocess.CompletedProcess[str], list[str], list[str]]:
     bundle = tmp_path / "bundle"
     (bundle / "nginx").mkdir(parents=True)
-    shutil.copy(REPO_ROOT / "airgap-load.sh", bundle)
+    installer_files(bundle)
     shutil.copy(DOCKERFILE, bundle / "nginx/Dockerfile")
-    tarball = tmp_path / "images.tar.gz"
-    tarball.write_bytes(gzip.compress(b"images"))
+    # A genuine release, so the load gets past its signature check.
+    tarball = signed_release(
+        tmp_path / "release", "v2.13.0", payload=gzip.compress(b"images")
+    )
     fake_dir = tmp_path / "docker"
     (fake_dir / "bin").mkdir(parents=True)
     fake = fake_dir / "bin/docker"
@@ -227,9 +230,12 @@ def _airgap_load(
         capture_output=True,
         text=True,
         env={
-            "PATH": f"{fake_dir / 'bin'}{os.pathsep}{os.environ['PATH']}",
+            "PATH": os.pathsep.join(
+                [str(fake_dir / "bin"), str(fake_cosign(tmp_path)), os.environ["PATH"]]
+            ),
             "FAKE_DOCKER_DIR": str(fake_dir),
             "FAKE_LOAD": "\n".join(loads),
+            "COSIGN_LOG": str(tmp_path / "cosign.log"),
         },
         check=False,
     )

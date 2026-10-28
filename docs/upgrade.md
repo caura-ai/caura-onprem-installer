@@ -125,10 +125,19 @@ bring to the host instead of downloading them. On a machine with internet
 access, fetch these and carry them across:
 
 - the release tarball for the new version, as for an
-  [air-gap install](install-airgap.md#prerequisites);
+  [air-gap install](install-airgap.md#prerequisites), with its `.sha256` and
+  `.sha256.sigstore.json` beside it: `airgap-load.sh` loads it only after
+  [checking that the release built it](install-airgap.md#checking-that-the-release-built-the-tarball);
 - the installer bundle, `https://onprem.caura.ai/bundle.tar.gz`: the compose
   files, the gateway's `nginx/`, `scripts/` and `airgap-load.sh`;
-- `https://onprem.caura.ai/upgrade.sh`.
+- `https://onprem.caura.ai/upgrade.sh`;
+- [cosign](install-airgap.md#prerequisites) v3 or later, for the host's
+  `PATH`, if it does not have it yet: `airgap-load.sh` needs it to check the
+  tarball.
+
+A tarball from before signed releases has no `.sha256.sigstore.json`. That
+includes an older release reloaded for a rollback. Load one only if you have
+verified it some other way, with `airgap-load.sh --skip-verify`.
 
 Then, on the host:
 

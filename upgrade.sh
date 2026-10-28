@@ -884,7 +884,7 @@ else
 fi
 ROLLBACK_ALT="or 'memclawctl rollback', if the operator CLI is installed"  # legacy-name-floor: the shipped CLI's own command; an install whose CLI predates the alias has only this spelling
 if [ "$OFFLINE" = "true" ]; then
-  ROLLBACK_ALT="with ${FROM_VERSION}'s images still loaded; airgap-load.sh reloads them if pruned"
+  ROLLBACK_ALT="with ${FROM_VERSION}'s images still loaded; airgap-load.sh reloads them if pruned (--skip-verify for a tarball from before signed releases)"
 fi
 cat <<EOF
 
