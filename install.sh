@@ -205,9 +205,9 @@ json_string() {
 }
 
 setup_admin_payload() {
-  printf '{"email":%s,"password":%s,"org_name":%s,"license_key":%s}' \
+  printf '{"email":%s,"password":%s,"org_name":%s,"license_key":%s,"setup_token":%s}' \
     "$(json_string "$1")" "$(json_string "$2")" \
-    "$(json_string "$3")" "$(json_string "$4")"
+    "$(json_string "$3")" "$(json_string "$4")" "$(json_string "$5")"
 }
 
 validate_setup_password() {
@@ -692,6 +692,14 @@ if [ -z "$SRC_DIR" ]; then
   [ -f "$SRC_DIR/docker-compose.yml" ] || die "bundle missing docker-compose.yml after extract" 3
 fi
 
+# Validate the matching helper before copying bundle files or materializing a
+# license. An older/partial bundle cannot provision the new setup capability.
+for setup_helper in setup-token.sh setup_token.py; do
+  if [ ! -f "$SRC_DIR/scripts/$setup_helper" ] || [ ! -r "$SRC_DIR/scripts/$setup_helper" ]; then
+    die "Installer bundle is incomplete or mismatched: missing scripts/$setup_helper. Download a matching bundle." 3
+  fi
+done
+
 for f in docker-compose.yml docker-compose.airgap.yml \
          docker-compose.embedder.yml docker-compose.embedder.airgap.yml \
          docker-compose.tls-letsencrypt.yml \
@@ -862,6 +870,11 @@ if [ -f "$CAURA_HOME/license/license.key" ]; then
 fi
 
 # ── Write .env ──────────────────────────────────────────────────────────────
+# The token stays outside the writable license volume, private to the host
+# operator. Reuse it on a rerun instead of changing a pending setup's proof.
+# shellcheck source=scripts/setup-token.sh
+source "$CAURA_HOME/scripts/setup-token.sh"
+stage_setup_token_file "$CAURA_HOME/setup-token"
 # Resolved here rather than in the heredoc below, which is the one place the
 # two-line idiom used everywhere else cannot go: every line inside that heredoc
 # is written verbatim into the customer's .env, so a second read — or the
@@ -903,7 +916,7 @@ BIND_ADDRESS=${BIND_ADDRESS}
 HTTP_PORT=80
 HTTPS_PORT=443
 # TLS mode signal — read by upgrade.sh and cauractl to know whether
-# to re-apply overlays on a `docker compose up -d`. Possible values:
+# to re-apply overlays on docker compose up -d. Possible values:
 # self-signed, byo, letsencrypt, "" (HTTP-only).
 MEMCLAW_TLS_MODE=${TLS_MODE}
 MEMCLAW_TLS_DOMAIN=${TLS_DOMAIN}
@@ -995,6 +1008,13 @@ log "Rebuilding gateway image from bundled nginx config"
 docker compose "${COMPOSE_FILES[@]}" build --no-cache gateway \
   || die "gateway build failed" 3
 
+# The selected auth image supplies its actual appuser UID/GID. A short-lived,
+# network-disabled helper owns only the separate proof file, never .env.
+_setup_image=$(resolve_setup_auth_image "${COMPOSE_FILES[@]}") \
+  || die "Cannot resolve the auth image for host proof. No service was restarted." 2
+SETUP_TOKEN=$(prepare_setup_token_for_auth "$CAURA_HOME/setup-token" "$_setup_image" --print) \
+  || die "Cannot prepare host proof for the selected auth image." 2
+
 log "Starting the stack"
 docker compose "${COMPOSE_FILES[@]}" up -d || die "docker compose up failed" 3
 
@@ -1075,7 +1095,7 @@ if [ "$SKIP_ADMIN" != "true" ] && [ "$NON_INTERACTIVE" = "true" ]; then
   log "Creating initial admin ${ADMIN_EMAIL}"
   # Stream the proof and password through stdin, not curl's process arguments.
   resp=$(setup_admin_payload \
-    "$ADMIN_EMAIL" "$ADMIN_PASSWORD_RESOLVED" "$ORG_NAME" "$license_proof" \
+    "$ADMIN_EMAIL" "$ADMIN_PASSWORD_RESOLVED" "$ORG_NAME" "$license_proof" "$SETUP_TOKEN" \
     | curl -sSk -X POST "$URL/api/setup/admin" \
     -H "Content-Type: application/json" \
     --data-binary @- -w '\n%{http_code}') \
@@ -1100,4 +1120,5 @@ EOF
 else
   printf '\n\033[32m=== Caura is running ===\033[0m\n'
   printf 'Visit %s/setup to upload your license and create the first admin.\n' "$URL"
+  printf 'The host setup token is in %s/setup-token (operator access only).\n' "$CAURA_HOME"
 fi

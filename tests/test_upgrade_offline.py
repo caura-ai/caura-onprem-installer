@@ -19,6 +19,7 @@ import fnmatch
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 from collections.abc import Callable
 from pathlib import Path
@@ -53,9 +54,14 @@ OLD_DOCKERFILE = "FROM nginx:1.27-alpine\nRUN apk add --no-cache gettext\n"
 _FAKE_DOCKER = r"""#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FAKE/calls"
 case "$1" in
-  info) exit 0 ;;
+  info) [ "${FAKE_DOCKER_UNREACHABLE:-no}" != yes ]; exit ;;
+  run)
+    [ "${FAKE_SETUP_FAIL:-no}" != yes ] || exit 2
+    exec python -c 'import os,runpy,sys; from pathlib import Path; ns=runpy.run_path(os.environ["CAURA_HOME"]+"/scripts/setup_token.py"); proof=ns["prepare_token"](Path(os.environ["CAURA_HOME"])/"setup-token",os.getuid(),os.getgid()); sys.stdout.write(proof if "--print" in sys.argv else "")' "$@"
+    ;;
   image)
     if [ "${3:-}" = --format ]; then
+      case "$*" in *ai.caura.setup-proof*) echo file-v1; exit 0 ;; esac
       if [ "${FAKE_AUDIT_CHANGE:-no}" = yes ] && [ "$(grep -cF 'image inspect --format' "$FAKE/calls")" -gt 1 ]; then
         exit 0
       fi
@@ -88,10 +94,12 @@ exit 6
 _FAKES = {
     "docker": _FAKE_DOCKER,
     "curl": _FAKE_CURL,
+    "sudo": '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FAKE/sudo-calls"\nexit 42\n',
     # GNU df's -BG output, which upgrade.sh's disk check parses.
     "df": "#!/bin/sh\nprintf 'Filesystem 1G-blocks Used Available Use%% Mounted\\n"
     "/dev/x 200G 10G 100G 5%% /\\n'\n",
     "sleep": "#!/bin/sh\nexit 0\n",
+
 }
 
 
@@ -114,6 +122,8 @@ def _bundle(path: Path, *, without: str = "") -> Path:
         *sorted(p for p in (REPO_ROOT / "nginx").rglob("*") if p.is_file()),
         REPO_ROOT / "airgap-load.sh",
         REPO_ROOT / ".env.example",
+        REPO_ROOT / "scripts/setup-token.sh",
+        REPO_ROOT / "scripts/setup_token.py",
     ]
     with tarfile.open(path, "w:gz") as tar:
         for f in files:
@@ -169,6 +179,10 @@ def upgrade(tmp_path: Path, compose_services, compose_required_env) -> Run:
         changed_capability: bool = False,
         existing_auth_limiter: bool = False,
         via: str = "file",
+        setup_prepare_failure: bool = False,
+        unreadable_env: bool = False,
+        docker_unreachable: bool = False,
+        symlink_env: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], dict[str, Any]]:
         if existing_auth_limiter:
             # Pre-refresh snapshot must recognize a limiter already in use.
@@ -177,6 +191,11 @@ def upgrade(tmp_path: Path, compose_services, compose_required_env) -> Run:
         (home / ".env").write_text(
             "".join(f"{k}={v}\n" for k, v in lines.items()), encoding="utf-8"
         )
+        if unreadable_env:
+            (home / ".env").chmod(0)
+        if symlink_env:
+            (home / ".env").rename(home / "operator.env")
+            (home / ".env").symlink_to(home / "operator.env")
         (home / "install.state.json").write_text(
             f'{{\n  "version": "{FROM}",\n  "offline": {str(offline_install).lower()}\n}}\n',
             encoding="utf-8",
@@ -206,6 +225,8 @@ def upgrade(tmp_path: Path, compose_services, compose_required_env) -> Run:
                 **{k: os.environ[k] for k in ("DOCKER_CONFIG",) if k in os.environ},
                 "CAURA_HOME": str(home),
                 "REAL_DOCKER": real_docker,
+                "FAKE_SETUP_FAIL": "yes" if setup_prepare_failure else "no",
+                "FAKE_DOCKER_UNREACHABLE": "yes" if docker_unreachable else "no",
                 "FAKE": str(fake),
                 **({"FAKE_BUNDLE": str(bundle), "FAKE_PULL": "ok"} if network else {}),
                 **({} if healthy else {"FAKE_HEALTH": "unhealthy"}),
@@ -214,6 +235,8 @@ def upgrade(tmp_path: Path, compose_services, compose_required_env) -> Run:
             },
             check=False,
         )
+        if unreadable_env:
+            (home / ".env").chmod(0o600)
         env_after = dict(
             ln.split("=", 1)
             for ln in (home / ".env").read_text(encoding="utf-8").splitlines()
@@ -269,6 +292,80 @@ def test_the_upgrade_brings_the_bundle_and_the_secrets_the_release_needs(
     # Without these core-api refuses to start, and an August .env has neither.
     assert r["env"].get("CORE_STORAGE_SHARED_SECRET")
     assert r["env"].get("GATEWAY_SHARED_SECRET")
+
+
+@pytest.mark.parametrize("offline", [False, True], ids=["connected", "offline"])
+def test_setup_preparation_failure_restores_before_restart(upgrade: Run, offline):
+    proc, result = upgrade(
+        *(OFFLINE if offline else ("--to", TO)), loaded=EVERYTHING,
+        offline_install=offline, network=not offline, setup_prepare_failure=True,
+    )
+    assert proc.returncode == 2
+    assert "setup_proof_unavailable" in proc.stderr
+    assert "No service was restarted" in proc.stderr
+    assert result["env"]["CAURA_VERSION"] == FROM
+    assert "SETUP_TOKEN" not in result["env"]
+    assert AUGUST in (result["home"] / "docker-compose.yml").read_text()
+    assert not _compose_calls(result["calls"], "up -d")
+    assert not _compose_calls(result["calls"], "build --no-cache gateway")
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory"])
+def test_invalid_proof_path_restores_before_restart(upgrade: Run, tmp_path, kind):
+    path = tmp_path / "home/setup-token"
+    external = tmp_path / "operator-file"
+    external.write_text("keep this file")
+    if kind == "symlink":
+        path.symlink_to(external)
+    else:
+        path.mkdir()
+    proc, result = upgrade(*OFFLINE, loaded=EVERYTHING)
+    assert proc.returncode == 2
+    assert result["env"]["CAURA_VERSION"] == FROM
+    assert AUGUST in (result["home"] / "docker-compose.yml").read_text()
+    assert not _compose_calls(result["calls"], "up -d")
+    assert external.read_text() == "keep this file"
+
+
+def test_forward_host_proof_keeps_environment_access(upgrade: Run, tmp_path):
+    env = tmp_path / "home/.env"
+    env.write_text("old settings")
+    env.chmod(0o640)
+    original = env.stat()
+    proc, result = upgrade(*OFFLINE, loaded=EVERYTHING)
+    assert proc.returncode == 0, proc.stderr
+    current = env.stat()
+    assert (current.st_mode, current.st_uid, current.st_gid) == (
+        original.st_mode, original.st_uid, original.st_gid
+    )
+    assert "SETUP_TOKEN" not in result["env"]
+    token = result["home"] / "setup-token"
+    assert token.stat().st_mode & 0o777 == 0o600
+    assert token.read_text().strip() not in proc.stdout + proc.stderr
+
+
+def test_partial_host_proof_bundle_is_refused_before_backup(upgrade: Run, tmp_path):
+    _bundle(tmp_path / "partial.tar.gz", without="scripts/setup-token.sh")
+    proc, result = upgrade(
+        "--offline", "--bundle", "partial.tar.gz", "--to", TO, loaded=EVERYTHING
+    )
+    assert proc.returncode == 3
+    assert "scripts/setup-token.sh" in proc.stderr
+    assert not any("pg_dump" in call for call in result["calls"])
+    assert not (result["home"] / ".compose-pre-upgrade").exists()
+    assert result["env"]["CAURA_VERSION"] == FROM
+    assert AUGUST in (result["home"] / "docker-compose.yml").read_text()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root does not re-exec via sudo")
+def test_private_environment_keeps_docker_sudo_reexec(upgrade: Run, tmp_path):
+    proc, result = upgrade(
+        *OFFLINE, loaded=EVERYTHING, unreadable_env=True, docker_unreachable=True
+    )
+    assert proc.returncode == 42  # only the fake sudo runs; never elevate in tests
+    assert "Re-executing via sudo" in proc.stderr
+    assert "-E bash" in (tmp_path / "fake/sudo-calls").read_text()
+    assert result["env"]["CAURA_VERSION"] == FROM
 
 
 @pytest.mark.parametrize("style", ["plain", "spaces", "export"])
@@ -561,8 +658,22 @@ def _record_previous_compose(tmp_path: Path, target: str, *, broker: bool = True
 
 
 @pytest.mark.parametrize("offline", [False, True], ids=["connected", "offline"])
+@pytest.mark.parametrize(
+    "symlink_env",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(
+                sys.platform != "linux",
+                reason="Linux host rollback uses GNU sed; BSD sed refuses symlink edits",
+            ),
+        ),
+    ],
+    ids=["regular-env", "symlink-env"],
+)
 def test_recorded_rollback_restores_broker_compose_for_unlabeled_old_images(
-    upgrade: Run, tmp_path: Path, offline: bool
+    upgrade: Run, tmp_path: Path, offline: bool, symlink_env: bool
 ):
     target = "v2.10.0"
     _record_previous_compose(tmp_path, target)
@@ -571,6 +682,7 @@ def test_recorded_rollback_restores_broker_compose_for_unlabeled_old_images(
         args += ["--offline", "--bundle", "bundle.tar.gz"]
     proc, state = upgrade(
         *args, network=not offline, audit_capability=False,
+        symlink_env=symlink_env,
         loaded=[*_release(target), *UPSTREAM, GATEWAY_BASE, "rabbitmq:3-management-alpine"],
     )
     assert proc.returncode == 0, proc.stderr

@@ -101,3 +101,12 @@ written by a `login` subcommand, and an "inside the admin container" path using
 a service-internal key. None of the three exists: `cli.py` resolves the key
 from the flag and those two environment variables and nothing else, and `src/`
 contains no `login` command and no reference to a credentials file.
+
+First-run setup also requires the host token provisioned by `install.sh`.
+`cauractl setup` reads the install root's `setup-token` file; override its path
+with `--setup-token-file` or `SETUP_TOKEN_FILE`. For a manual server using
+`SETUP_TOKEN` instead of a mounted file, put the same value in an operator-owned
+mode-0600 local file and pass its path with `--setup-token-file`. No default
+install-root proof file is required when that flag is supplied. Never pass the
+proof itself as an argument. See the complete example in
+[host proof](../../docs/setup-host-proof.md).

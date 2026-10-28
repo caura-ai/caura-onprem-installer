@@ -335,9 +335,14 @@ this constraint applies only to the admin email.
 
 ```sh
 # fix and re-run admin creation (stack is already up):
-curl -sk -X POST https://$PUBLIC_HOSTNAME/api/setup/admin \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"admin@yourcompany.com","password":"<strong>","org_name":"yourorg"}'
+CAURA_HOME=/your/install/directory
+CAURACTL_BIN="$(command -v cauractl)"
+ADMIN_PASSWORD_FILE=/private/admin-password
+sudo "$CAURACTL_BIN" --url "https://$PUBLIC_HOSTNAME" setup \
+  --license "$CAURA_HOME/license/license.key" \
+  --setup-token-file "$CAURA_HOME/setup-token" \
+  --email admin@yourcompany.com --org-name yourorg --password-stdin \
+  < "$ADMIN_PASSWORD_FILE"
 ```
 
 ## Recall returns `503 Embedding service unavailable`
@@ -351,6 +356,47 @@ search 503s. The stack has no reachable embedding backend:
   the VM (egress / proxy).
 - **Local embeddings:** requires the bundled embedder image — see
   `install-airgap.md` for availability and how to enable it.
+
+## Missing setup-token bind source
+
+With the compatible Compose bundle, `docker compose up -d` can fail with
+`invalid mount config for type "bind": bind source path does not exist` naming
+`setup-token`. The read-only mount intentionally has `create_host_path: false`.
+A copied Compose file, restored install tree, or deleted proof file can cause
+this. `scripts/restore.sh` checks for a missing or nonregular proof file before
+changing databases and stops with a link here. Prepare the file below, then
+rerun restore. Do not create an empty directory or weaken file permissions to bypass it.
+
+`install.sh` and a real forward `upgrade.sh` create the file through
+`scripts/setup-token.sh`. An install rerun must use the original configuration;
+`upgrade.sh --to` the already-running version exits without preparing files.
+To repair only the proof, use the matching bundle's helpers as an authorized
+install operator with Docker access. Set the install path below, and use the
+exact Compose files/overlays for your installation (including air-gap, TLS,
+embedder and local overrides, in their original order):
+
+```bash
+CAURA_HOME=/your/install/directory
+cd "$CAURA_HOME"
+bash <<'REPAIR'
+set -euo pipefail
+die() { printf '%s\n' "$1" >&2; exit "${2:-2}"; }
+source ./scripts/setup-token.sh
+compose=(-f docker-compose.yml) # example: add ALL of your original overlays
+stage_setup_token_file "$PWD/setup-token"
+image=$(resolve_setup_auth_image "${compose[@]}")
+prepare_setup_token_for_auth "$PWD/setup-token" "$image"
+REPAIR
+```
+
+Then retry your original Compose command with its original flags. This creates
+fresh random proof only if missing, retains a valid existing value, and assigns
+mode 0600 and ownership to the auth image's appuser. It prints no proof and
+changes neither `.env` nor database/license credentials. A custom file can
+instead contain 32–256 printable non-space ASCII characters, but still needs
+that helper preparation. Do not merely `touch` an empty file. If restoring an
+older image without `file-v1` support, restore its matching Compose bundle
+rather than mixing it with the new file mount.
 
 ## Getting more help
 

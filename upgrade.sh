@@ -304,6 +304,22 @@ if [[ "${TO_VERSION#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$ ]] \
   fi
 fi
 
+# A local forward bundle that introduces host proof must carry its helper.
+# Inspect without extracting over the install, before a backup or snapshot.
+# Recorded rollback restores its snapshot and does not apply this bundle.
+if [ "$RECORDED_ROLLBACK" != "true" ] && [ -n "$BUNDLE_FILE" ]; then
+  _bundle_compose=$(tar -xOzf "$BUNDLE_FILE" docker-compose.yml 2>/dev/null \
+    || tar -xOzf "$BUNDLE_FILE" ./docker-compose.yml 2>/dev/null) \
+    || die "Cannot inspect docker-compose.yml in the installer bundle." 3
+  if printf '%s\n' "$_bundle_compose" | grep 'SETUP_TOKEN_FILE:' >/dev/null; then
+    for _setup_helper in scripts/setup-token.sh scripts/setup_token.py; do
+      printf '%s\n' "$_bundle_list" | grep -xF "$_setup_helper" >/dev/null \
+        || die "Installer bundle is incomplete: missing $_setup_helper. No files have been refreshed; obtain a matching bundle." 3
+    done
+  fi
+  unset _bundle_compose
+fi
+
 # Rough disk check — pg_dump + new images easily eat 10 GB.
 DISK_GB=$(df -BG "$CAURA_HOME" | awk 'NR==2 {sub("G","",$4); print $4}')
 [ "${DISK_GB:-0}" -ge 5 ] \
@@ -714,6 +730,23 @@ if [ -z "$(_env_key CORE_STORAGE_SHARED_SECRET)" ]; then
   log "Generated CORE_STORAGE_SHARED_SECRET (required by core-api from backend-2.46.0)."
 fi
 
+# ── Host setup proof for compatible forward upgrades ──────────────────────
+_setup_proof_pending=false
+if [ "$RECORDED_ROLLBACK" != "true" ] && grep -q 'SETUP_TOKEN_FILE:' docker-compose.yml; then
+  if [ ! -f scripts/setup-token.sh ] || [ ! -r scripts/setup-token.sh ] \
+     || [ ! -f scripts/setup_token.py ] || [ ! -r scripts/setup_token.py ]; then
+    _rollback_pre_up "incomplete_setup_bundle"
+    die "Installer bundle is incomplete: missing setup-token.sh or setup_token.py. No service was restarted." 3
+  fi
+  # shellcheck source=scripts/setup-token.sh
+  source scripts/setup-token.sh
+  if ! (stage_setup_token_file "$CAURA_HOME/setup-token"); then
+    _rollback_pre_up "setup_proof_unavailable"
+    die "Cannot stage host proof. No service was restarted." 2
+  fi
+  _setup_proof_pending=true
+fi
+
 # ── Pull + build + up ───────────────────────────────────────────────────────
 # --offline: there is no registry to pull from, so every image the refreshed
 # compose names must be loaded already, and so must the images the gateway's
@@ -754,7 +787,6 @@ else
   fi
 fi
 
-log "Rebuilding gateway from bundled nginx template"
 # Check the actual locally selected image after compose pull, without repulling.
 # A changed mutable tag must also pass; restore files/version if it does not.
 if [ "$LEGACY_AUDIT_ROLLBACK" != "true" ] && ! (_check_admin_audit_transport "$TO_VERSION" "$OFFLINE" false); then
@@ -762,6 +794,18 @@ if [ "$LEGACY_AUDIT_ROLLBACK" != "true" ] && ! (_check_admin_audit_transport "$T
   die "Admin image compatibility changed after pull; restored prior compose/version. No services were restarted." 1
 fi
 
+if [ "$_setup_proof_pending" = true ]; then
+  _setup_image=$(resolve_setup_auth_image "${COMPOSE_FILES[@]}") || {
+    _rollback_pre_up "setup_image_unavailable"
+    die "Cannot resolve the auth image for host proof. No service was restarted." 2
+  }
+  if ! prepare_setup_token_for_auth "$CAURA_HOME/setup-token" "$_setup_image"; then
+    _rollback_pre_up "setup_proof_unavailable"
+    die "Cannot prepare host proof. No service was restarted." 2
+  fi
+fi
+
+log "Rebuilding gateway from bundled nginx template"
 docker compose "${COMPOSE_FILES[@]}" build --no-cache gateway || {
   warn "gateway build failed — rolling back"
   _rollback_pre_up "gateway_build_failed"
